@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { Camera, Flame, Lock } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
 
 export default function Profile({ session, onUpdateGoals }) {
   const [loading, setLoading] = useState(true);
@@ -79,7 +82,6 @@ export default function Profile({ session, onUpdateGoals }) {
     setTdeeGoal(calculatedTdee);
   };
 
-  // Upload Profile Avatar to Supabase Storage
   const uploadAvatar = async (event) => {
     try {
       setUploading(true);
@@ -89,10 +91,8 @@ export default function Profile({ session, onUpdateGoals }) {
 
       const file = event.target.files[0];
       const fileExt = file.name.split(".").pop();
-      // Clean file path using simple unique identifier
       const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
 
-      // 1. Upload file to 'avatars' bucket with content type options
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(filePath, file, {
@@ -103,11 +103,9 @@ export default function Profile({ session, onUpdateGoals }) {
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
       const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
 
       setAvatarUrl(data.publicUrl);
-      alert("Avatar uploaded successfully!");
     } catch (error) {
       console.error("Avatar upload failed:", error);
       alert("Error uploading avatar: " + error.message);
@@ -143,7 +141,7 @@ export default function Profile({ session, onUpdateGoals }) {
         onUpdateGoals(tdeeGoal, avatarUrl);
       }
 
-      alert("Profile updated successfully!");
+      alert("Profile updated!");
     } catch (error) {
       alert("Error updating profile: " + error.message);
     } finally {
@@ -153,243 +151,277 @@ export default function Profile({ session, onUpdateGoals }) {
 
   if (loading) {
     return (
-      <div style={{ padding: "20px", textAlign: "center" }}>
+      <div
+        style={{
+          padding: "40px",
+          textAlign: "center",
+          color: "var(--ink-soft)",
+        }}
+      >
         Loading profile...
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
-      <h2>User Demographics & Profile</h2>
+    <div
+      style={{
+        padding: "20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+      }}
+    >
+      <h2 style={{ fontSize: "20px" }}>Profile</h2>
 
-      {/* Avatar Image Picker Card */}
-      <div style={avatarCardStyle}>
+      {/* Avatar */}
+      <div style={{ display: "flex", justifyContent: "center" }}>
         <div style={{ textAlign: "center" }}>
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt="Avatar"
               style={{
-                width: "100px",
-                height: "100px",
+                width: "88px",
+                height: "88px",
                 borderRadius: "50%",
                 objectFit: "cover",
                 marginBottom: "10px",
+                border: "3px solid var(--ember-soft)",
               }}
             />
           ) : (
-            <div style={avatarPlaceholderStyle}>👤 No Pic</div>
+            <div
+              style={{
+                width: "88px",
+                height: "88px",
+                borderRadius: "50%",
+                backgroundColor: "var(--ember-soft)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 10px auto",
+                color: "var(--ember)",
+              }}
+            >
+              <Camera size={28} />
+            </div>
           )}
-          <div>
-            <label style={uploadBtnStyle}>
-              {uploading ? "Uploading..." : "📷 Change Profile Picture"}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={uploadAvatar}
-                disabled={uploading}
-                style={{ display: "none" }}
-              />
-            </label>
-          </div>
+          <label style={uploadBtnStyle}>
+            <Camera size={14} />
+            {uploading ? "Uploading..." : "Change photo"}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={uploadAvatar}
+              disabled={uploading}
+              style={{ display: "none" }}
+            />
+          </label>
         </div>
       </div>
 
-      {/* Target Summary */}
-      <div style={summaryCardStyle}>
-        <h3>🎯 Dynamic Daily Target</h3>
-        <p>
-          Estimated BMR: <strong>{bmr} kcal/day</strong>
-        </p>
-        <p>
-          Calculated Daily Target (TDEE): <strong>{tdeeGoal} kcal/day</strong>
-        </p>
-      </div>
-
-      <form
-        onSubmit={updateProfile}
-        style={{ display: "flex", flexDirection: "column", gap: "15px" }}
-      >
-        <div>
-          <label style={labelStyle}>Display Name:</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Alex"
-            style={inputStyle}
-          />
-        </div>
-
+      {/* BMR/TDEE — the payoff of filling in the form, given the strongest visual treatment */}
+      <Card accent="var(--sprout)" style={{ backgroundColor: "#F5FAF6" }}>
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "10px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "12px",
           }}
         >
+          <Flame size={18} color="var(--sprout)" />
+          <h3 style={{ fontSize: "15px" }}>Your daily target</h3>
+        </div>
+        <div style={{ display: "flex", gap: "24px" }}>
           <div>
-            <label style={labelStyle}>Age:</label>
-            <input
-              type="number"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              placeholder="e.g. 25"
-              style={inputStyle}
-              required
-            />
+            <div
+              className="stat-number"
+              style={{ fontSize: "26px", color: "var(--ink)" }}
+            >
+              {bmr}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-soft)" }}>
+              BMR (kcal/day)
+            </div>
           </div>
           <div>
-            <label style={labelStyle}>Biological Sex:</label>
+            <div
+              className="stat-number"
+              style={{ fontSize: "26px", color: "var(--sprout)" }}
+            >
+              {tdeeGoal}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ink-soft)" }}>
+              TDEE goal (kcal/day)
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <form
+          onSubmit={updateProfile}
+          style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+        >
+          <Field label="Display name">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Alex"
+              style={inputStyle}
+            />
+          </Field>
+
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Field label="Age" style={{ flex: 1 }}>
+              <input
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                placeholder="e.g. 25"
+                style={inputStyle}
+                required
+              />
+            </Field>
+            <Field label="Biological sex" style={{ flex: 1 }}>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </Field>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Field label="Height (cm)" style={{ flex: 1 }}>
+              <input
+                type="number"
+                value={heightCm}
+                onChange={(e) => setHeightCm(e.target.value)}
+                placeholder="e.g. 175"
+                style={inputStyle}
+                required
+              />
+            </Field>
+            <Field label="Weight (kg)" style={{ flex: 1 }}>
+              <input
+                type="number"
+                value={weightKg}
+                onChange={(e) => setWeightKg(e.target.value)}
+                placeholder="e.g. 70"
+                style={inputStyle}
+                required
+              />
+            </Field>
+          </div>
+
+          <Field label="Activity level">
             <select
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
+              value={activityLevel}
+              onChange={(e) => setActivityLevel(e.target.value)}
               style={inputStyle}
             >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
+              <option value="1.2">Sedentary (little to no exercise)</option>
+              <option value="1.375">
+                Lightly active (exercise 1–3 days/week)
+              </option>
+              <option value="1.55">
+                Moderately active (exercise 3–5 days/week)
+              </option>
+              <option value="1.725">
+                Very active (hard exercise 6–7 days/week)
+              </option>
+            </select>
+          </Field>
+
+          <div
+            style={{
+              backgroundColor: "var(--paper)",
+              borderRadius: "var(--radius-md)",
+              padding: "12px",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                marginBottom: "6px",
+              }}
+            >
+              <Lock size={13} color="var(--ink-soft)" />
+              <label style={{ ...labelStyle, marginBottom: 0 }}>
+                Profile visibility
+              </label>
+            </div>
+            <select
+              value={privacySetting}
+              onChange={(e) => setPrivacySetting(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="private">
+                Private — only confirmed friends can view activity
+              </option>
+              <option value="public">
+                Public — searchable and visible to everyone
+              </option>
             </select>
           </div>
-        </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "10px",
-          }}
-        >
-          <div>
-            <label style={labelStyle}>Height (cm):</label>
-            <input
-              type="number"
-              value={heightCm}
-              onChange={(e) => setHeightCm(e.target.value)}
-              placeholder="e.g. 175"
-              style={inputStyle}
-              required
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Weight (kg):</label>
-            <input
-              type="number"
-              value={weightKg}
-              onChange={(e) => setWeightKg(e.target.value)}
-              placeholder="e.g. 70"
-              style={inputStyle}
-              required
-            />
-          </div>
-        </div>
-
-        <div>
-          <label style={labelStyle}>Activity Level:</label>
-          <select
-            value={activityLevel}
-            onChange={(e) => setActivityLevel(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="1.2">Sedentary (Little to no exercise)</option>
-            <option value="1.375">
-              Lightly Active (Exercise 1-3 days/week)
-            </option>
-            <option value="1.55">
-              Moderately Active (Exercise 3-5 days/week)
-            </option>
-            <option value="1.725">
-              Very Active (Hard exercise 6-7 days/week)
-            </option>
-          </select>
-        </div>
-
-        <div style={privacyBoxStyle}>
-          <label style={labelStyle}>🔒 Profile Visibility:</label>
-          <select
-            value={privacySetting}
-            onChange={(e) => setPrivacySetting(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="private">
-              Private (Only confirmed friends can view activity)
-            </option>
-            <option value="public">
-              Public (Searchable and visible to everyone)
-            </option>
-          </select>
-        </div>
-
-        <button type="submit" style={submitBtnStyle}>
-          💾 Save Profile
-        </button>
-      </form>
+          <Button type="submit" fullWidth>
+            Save profile
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
 
-// Styles
-const avatarCardStyle = {
-  display: "flex",
-  justifyContent: "center",
-  marginBottom: "20px",
-};
-const avatarPlaceholderStyle = {
-  width: "100px",
-  height: "100px",
-  borderRadius: "50%",
-  backgroundColor: "#eee",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  margin: "0 auto 10px auto",
-  color: "#666",
-  fontSize: "14px",
-};
+function Field({ label, children, style }) {
+  return (
+    <div style={style}>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 const uploadBtnStyle = {
-  padding: "8px 14px",
-  backgroundColor: "#6c757d",
-  color: "white",
-  borderRadius: "20px",
-  fontSize: "13px",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "7px 14px",
+  backgroundColor: "var(--card)",
+  color: "var(--ink)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-full)",
+  fontSize: "12px",
+  fontWeight: 600,
   cursor: "pointer",
-  display: "inline-block",
 };
-const summaryCardStyle = {
-  border: "1px solid #28a745",
-  borderRadius: "8px",
-  padding: "15px",
-  marginBottom: "20px",
-  backgroundColor: "#f4fbf6",
-};
-const privacyBoxStyle = {
-  border: "1px solid #ccc",
-  borderRadius: "8px",
-  padding: "12px",
-  backgroundColor: "#f9f9f9",
-};
+
 const labelStyle = {
-  fontWeight: "bold",
-  fontSize: "14px",
+  fontWeight: 600,
+  fontSize: "13px",
   display: "block",
   marginBottom: "5px",
+  color: "var(--ink)",
 };
+
 const inputStyle = {
   width: "100%",
-  padding: "10px",
-  fontSize: "15px",
-  borderRadius: "4px",
-  border: "1px solid #ccc",
+  padding: "10px 12px",
+  fontSize: "14px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
   boxSizing: "border-box",
-};
-const submitBtnStyle = {
-  padding: "14px",
-  backgroundColor: "#007bff",
-  color: "white",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "16px",
-  fontWeight: "bold",
-  cursor: "pointer",
-  marginTop: "10px",
+  backgroundColor: "var(--card)",
+  color: "var(--ink)",
 };

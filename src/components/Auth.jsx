@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
 
 export default function Auth() {
   const [isSigningUp, setIsSigningUp] = useState(false);
@@ -48,7 +50,6 @@ export default function Auth() {
     setLoading(true);
 
     if (isSigningUp) {
-      // Execute Sign Up
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -57,7 +58,6 @@ export default function Auth() {
       if (signUpError) {
         alert(signUpError.error_description || signUpError.message);
       } else if (data?.user) {
-        // Auto-populate the profiles table with Step 2 data AND Email
         await supabase.from("profiles").upsert({
           id: data.user.id,
           email: data.user.email,
@@ -68,13 +68,11 @@ export default function Auth() {
           weight_kg: parseFloat(weight) || null,
         });
 
-        // Sign out to maintain the route flow back to Sign In
         await supabase.auth.signOut();
         setIsSigningUp(false);
-        setStep(1); // Reset for next time
+        setStep(1);
       }
     } else {
-      // Execute Sign In
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -96,189 +94,203 @@ export default function Auth() {
   return (
     <div
       style={{
+        minHeight: "100svh",
+        backgroundColor: "var(--paper)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         padding: "20px",
-        maxWidth: "400px",
-        margin: "0 auto",
-        fontFamily: "sans-serif",
       }}
     >
-      <h2 style={{ textAlign: "center", marginBottom: "5px" }}>
-        {isSigningUp ? "Create an Account" : "Welcome Back"}
-      </h2>
-      <p
-        style={{
-          textAlign: "center",
-          color: "#666",
-          marginBottom: "20px",
-          fontSize: "14px",
-        }}
-      >
-        {isSigningUp && step === 1 && "Step 1: Account Details"}
-        {isSigningUp && step === 2 && "Step 2: Personalize Your Profile"}
-        {!isSigningUp && "Sign in to track your progress"}
-      </p>
+      <div style={{ width: "100%", maxWidth: "380px" }}>
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "26px",
+              marginBottom: "6px",
+            }}
+          >
+            {isSigningUp ? "Create an account" : "Welcome back"}
+          </h2>
+          <p style={{ color: "var(--ink-soft)", fontSize: "14px" }}>
+            {isSigningUp && step === 1 && "Step 1 of 2 — account details"}
+            {isSigningUp &&
+              step === 2 &&
+              "Step 2 of 2 — personalize your profile"}
+            {!isSigningUp && "Sign in to track your progress"}
+          </p>
 
-      <form
-        onSubmit={isSigningUp && step === 1 ? handleNextStep : handleAuthAction}
-      >
-        {/* VIEW: LOGIN OR SIGNUP STEP 1 */}
-        {(!isSigningUp || (isSigningUp && step === 1)) && (
-          <>
-            <div style={inputGroupStyle}>
-              <label style={labelStyle}>Email</label>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                style={inputStyle}
-                required
-              />
-            </div>
-            <div style={inputGroupStyle}>
-              <label style={labelStyle}>Password</label>
-              <input
-                type="password"
-                placeholder="Secure password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={inputStyle}
-                required
-              />
-            </div>
-          </>
-        )}
-
-        {/* VIEW: SIGNUP STEP 2 (PROFILE SETUP) */}
-        {isSigningUp && step === 2 && (
-          <>
-            <div style={inputGroupStyle}>
-              <label style={labelStyle}>Display Name</label>
-              <input
-                type="text"
-                placeholder="How should we call you?"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={inputStyle}
-                required
-              />
-            </div>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Age</label>
-                <input
-                  type="number"
-                  placeholder="Years"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Height (cm)</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 175"
-                  value={height}
-                  onChange={(e) => setHeight(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Weight (kg)</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 70"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setStep(1)}
+          {isSigningUp && (
+            <div
               style={{
-                ...btnStyle,
-                backgroundColor: "#6c757d",
-                marginBottom: "10px",
+                display: "flex",
+                justifyContent: "center",
+                gap: "6px",
+                marginTop: "12px",
               }}
             >
-              Back
-            </button>
-          </>
-        )}
+              <span style={dotStyle(true)} />
+              <span style={dotStyle(step === 2)} />
+            </div>
+          )}
+        </div>
 
-        <button type="submit" disabled={loading} style={btnStyle}>
-          {loading
-            ? "Processing..."
-            : isSigningUp && step === 1
-              ? "Next Step"
-              : isSigningUp
-                ? "Complete Sign Up"
-                : "Sign In"}
-        </button>
-      </form>
+        <Card>
+          <form
+            onSubmit={
+              isSigningUp && step === 1 ? handleNextStep : handleAuthAction
+            }
+            style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+          >
+            {(!isSigningUp || (isSigningUp && step === 1)) && (
+              <>
+                <Field label="Email">
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    style={inputStyle}
+                    required
+                  />
+                </Field>
+                <Field label="Password">
+                  <input
+                    type="password"
+                    placeholder="Secure password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    style={inputStyle}
+                    required
+                  />
+                </Field>
+              </>
+            )}
 
-      <button onClick={resetMode} style={toggleBtnStyle}>
-        {isSigningUp
-          ? "Already have an account? Sign In"
-          : "Don't have an account? Sign Up"}
-      </button>
+            {isSigningUp && step === 2 && (
+              <>
+                <Field label="Display name">
+                  <input
+                    type="text"
+                    placeholder="How should we call you?"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    style={inputStyle}
+                    required
+                  />
+                </Field>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <Field label="Age" style={{ flex: 1 }}>
+                    <input
+                      type="number"
+                      placeholder="Years"
+                      value={age}
+                      onChange={(e) => setAge(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Gender" style={{ flex: 1 }}>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </Field>
+                </div>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <Field label="Height (cm)" style={{ flex: 1 }}>
+                    <input
+                      type="number"
+                      placeholder="e.g. 175"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Weight (kg)" style={{ flex: 1 }}>
+                    <input
+                      type="number"
+                      placeholder="e.g. 70"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={() => setStep(1)}
+                >
+                  Back
+                </Button>
+              </>
+            )}
+
+            <Button type="submit" fullWidth disabled={loading}>
+              {loading
+                ? "Processing..."
+                : isSigningUp && step === 1
+                  ? "Next step"
+                  : isSigningUp
+                    ? "Complete sign up"
+                    : "Sign in"}
+            </Button>
+          </form>
+        </Card>
+
+        <Button
+          variant="ghost"
+          fullWidth
+          onClick={resetMode}
+          style={{ marginTop: "14px" }}
+        >
+          {isSigningUp
+            ? "Already have an account? Sign in"
+            : "Don't have an account? Sign up"}
+        </Button>
+      </div>
     </div>
   );
 }
 
-// UI Design Styles
-const inputGroupStyle = { marginBottom: "15px", flex: 1 };
+function Field({ label, children, style }) {
+  return (
+    <div style={style}>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const dotStyle = (filled) => ({
+  width: "22px",
+  height: "4px",
+  borderRadius: "var(--radius-full)",
+  backgroundColor: filled ? "var(--ember)" : "var(--line)",
+});
+
 const labelStyle = {
   display: "block",
   marginBottom: "5px",
-  fontSize: "14px",
-  fontWeight: "bold",
-  color: "#333",
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "var(--ink)",
 };
+
 const inputStyle = {
   width: "100%",
-  padding: "10px",
+  padding: "10px 12px",
   boxSizing: "border-box",
-  borderRadius: "6px",
-  border: "1px solid #ccc",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
   fontSize: "14px",
-};
-const btnStyle = {
-  width: "100%",
-  padding: "12px",
-  backgroundColor: "#007bff",
-  color: "white",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-  fontWeight: "bold",
-  fontSize: "15px",
-};
-const toggleBtnStyle = {
-  width: "100%",
-  marginTop: "15px",
-  padding: "10px",
-  backgroundColor: "transparent",
-  color: "#007bff",
-  border: "none",
-  cursor: "pointer",
-  fontSize: "14px",
-  fontWeight: "500",
+  backgroundColor: "var(--card)",
+  color: "var(--ink)",
 };

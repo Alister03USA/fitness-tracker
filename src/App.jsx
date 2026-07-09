@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
+import {
+  Home,
+  PlusCircle,
+  Users,
+  MessageCircle,
+  User,
+  LogOut,
+} from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
@@ -6,6 +14,14 @@ import FoodLogger from "./components/FoodLogger";
 import SocialFeed from "./components/SocialFeed";
 import Profile from "./components/Profile";
 import Chat from "./components/Chat";
+
+const NAV_ITEMS = [
+  { key: "dashboard", label: "Home", icon: Home },
+  { key: "log", label: "Log", icon: PlusCircle, isPrimary: true },
+  { key: "feed", label: "Feed", icon: Users },
+  { key: "chat", label: "Chat", icon: MessageCircle },
+  { key: "profile", label: "Profile", icon: User },
+];
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -18,10 +34,26 @@ export default function App() {
     steps: 7420,
     calorieGoal: 2200,
     caloriesConsumed: 0,
+    // Standard macro split (30% protein / 40% carbs / 30% fat) derived from
+    // the calorie goal, expressed in grams (protein/carbs = 4 kcal/g, fat = 9 kcal/g)
+    proteinGoal: Math.round((2200 * 0.3) / 4),
+    carbsGoal: Math.round((2200 * 0.4) / 4),
+    fatGoal: Math.round((2200 * 0.3) / 9),
+    proteinConsumed: 0,
+    carbsConsumed: 0,
+    fatConsumed: 0,
   });
 
+  const [todayLogs, setTodayLogs] = useState([]);
+
   const handleUpdateGoals = (newCalorieGoal, newAvatarUrl) => {
-    setUserStats((prev) => ({ ...prev, calorieGoal: newCalorieGoal }));
+    setUserStats((prev) => ({
+      ...prev,
+      calorieGoal: newCalorieGoal,
+      proteinGoal: Math.round((newCalorieGoal * 0.3) / 4),
+      carbsGoal: Math.round((newCalorieGoal * 0.4) / 4),
+      fatGoal: Math.round((newCalorieGoal * 0.3) / 9),
+    }));
     if (newAvatarUrl) setAvatarUrl(newAvatarUrl);
   };
 
@@ -55,14 +87,31 @@ export default function App() {
 
     const { data, error } = await supabase
       .from("logs")
-      .select("calories")
+      .select("id, food_name, calories, protein, carbs, fat, created_at")
       .eq("user_id", session.user.id)
       .gte("created_at", startOfDay.toISOString())
-      .lte("created_at", endOfDay.toISOString());
+      .lte("created_at", endOfDay.toISOString())
+      .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const total = data.reduce((sum, item) => sum + (item.calories || 0), 0);
-      setUserStats((prev) => ({ ...prev, caloriesConsumed: total }));
+      const totals = data.reduce(
+        (sum, item) => ({
+          calories: sum.calories + (item.calories || 0),
+          protein: sum.protein + (item.protein || 0),
+          carbs: sum.carbs + (item.carbs || 0),
+          fat: sum.fat + (item.fat || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      );
+
+      setUserStats((prev) => ({
+        ...prev,
+        caloriesConsumed: totals.calories,
+        proteinConsumed: totals.protein,
+        carbsConsumed: totals.carbs,
+        fatConsumed: totals.fat,
+      }));
+      setTodayLogs(data);
     }
   }, [session]);
 
@@ -94,6 +143,7 @@ export default function App() {
         alert("Failed to save log to database: " + error.message);
       } else {
         fetchTodayLogs();
+        setActiveTab("dashboard");
       }
     },
     [session, fetchTodayLogs],
@@ -105,7 +155,8 @@ export default function App() {
         style={{
           padding: "40px",
           textAlign: "center",
-          fontFamily: "sans-serif",
+          fontFamily: "var(--font-body)",
+          color: "var(--ink-soft)",
         }}
       >
         Loading Fitness Tracker...
@@ -122,58 +173,77 @@ export default function App() {
       style={{
         maxWidth: "480px",
         margin: "0 auto",
-        border: "1px solid #ccc",
+        border: "1px solid var(--line)",
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#fff",
+        backgroundColor: "var(--paper)",
         position: "relative",
       }}
     >
       <header
         style={{
-          padding: "12px 15px",
-          backgroundColor: "#333",
-          color: "white",
+          padding: "14px 18px",
+          backgroundColor: "var(--paper)",
+          borderBottom: "1px solid var(--line)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {avatarUrl && (
+          {avatarUrl ? (
             <img
               src={avatarUrl}
               alt="User Avatar"
               style={{
-                width: "32px",
-                height: "32px",
+                width: "34px",
+                height: "34px",
                 borderRadius: "50%",
                 objectFit: "cover",
+                border: "2px solid var(--ember-soft)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "50%",
+                backgroundColor: "var(--ember-soft)",
               }}
             />
           )}
-          <h1 style={{ margin: 0, fontSize: "18px", color: "#fff" }}>
-            Fitness Tracker
-          </h1>
+          <h1 style={{ fontSize: "17px" }}>Fitness Tracker</h1>
         </div>
         <button
           onClick={() => supabase.auth.signOut()}
+          aria-label="Sign out"
           style={{
-            padding: "6px 12px",
-            backgroundColor: "#dc3545",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "8px 12px",
+            backgroundColor: "transparent",
+            color: "var(--ink-soft)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-full)",
             cursor: "pointer",
+            fontSize: "13px",
           }}
         >
-          Sign Out
+          <LogOut size={14} />
+          Sign out
         </button>
       </header>
 
-      <div style={{ flex: 1, color: "#333", overflowY: "auto" }}>
-        {activeTab === "dashboard" && <Dashboard userStats={userStats} />}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {activeTab === "dashboard" && (
+          <Dashboard userStats={userStats} todayLogs={todayLogs} />
+        )}
         {activeTab === "log" && <FoodLogger onAddMeal={handleAddMeal} />}
         {activeTab === "feed" && <SocialFeed session={session} />}
         {activeTab === "chat" && <Chat session={session} />}
@@ -185,52 +255,79 @@ export default function App() {
       <nav
         style={{
           display: "flex",
-          borderTop: "1px solid #ccc",
-          backgroundColor: "#fff",
+          alignItems: "center",
+          borderTop: "1px solid var(--line)",
+          backgroundColor: "var(--card)",
+          padding: "8px 6px",
+          position: "sticky",
+          bottom: 0,
         }}
       >
-        <button
-          onClick={() => setActiveTab("dashboard")}
-          style={navBtnStyle(activeTab === "dashboard")}
-        >
-          Home
-        </button>
-        <button
-          onClick={() => setActiveTab("log")}
-          style={navBtnStyle(activeTab === "log")}
-        >
-          Log
-        </button>
-        <button
-          onClick={() => setActiveTab("feed")}
-          style={navBtnStyle(activeTab === "feed")}
-        >
-          Feed
-        </button>
-        <button
-          onClick={() => setActiveTab("chat")}
-          style={navBtnStyle(activeTab === "chat")}
-        >
-          Chat
-        </button>
-        <button
-          onClick={() => setActiveTab("profile")}
-          style={navBtnStyle(activeTab === "profile")}
-        >
-          Profile
-        </button>
+        {NAV_ITEMS.map(({ key, label, icon: Icon, isPrimary }) => {
+          const isActive = activeTab === key;
+
+          if (isPrimary) {
+            return (
+              <div
+                key={key}
+                style={{ flex: 1, display: "flex", justifyContent: "center" }}
+              >
+                <button
+                  onClick={() => setActiveTab(key)}
+                  aria-label={label}
+                  style={{
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: "50%",
+                    backgroundColor: "var(--ember)",
+                    color: "#fff",
+                    border: "4px solid var(--card)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transform: "translateY(-14px)",
+                    boxShadow: "var(--shadow-press)",
+                  }}
+                >
+                  <Icon size={26} strokeWidth={2.25} />
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              aria-label={label}
+              aria-current={isActive ? "page" : undefined}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "3px",
+                padding: "6px 2px",
+                border: "none",
+                background: "none",
+                color: isActive ? "var(--ember)" : "var(--ink-faint)",
+                cursor: "pointer",
+              }}
+            >
+              <Icon size={22} strokeWidth={isActive ? 2.4 : 2} />
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: isActive ? 600 : 500,
+                }}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
 }
-
-const navBtnStyle = (isActive) => ({
-  flex: 1,
-  padding: "12px 5px",
-  border: "none",
-  backgroundColor: isActive ? "#007bff" : "#fff",
-  color: isActive ? "#fff" : "#333",
-  fontWeight: "bold",
-  fontSize: "13px",
-  cursor: "pointer",
-});

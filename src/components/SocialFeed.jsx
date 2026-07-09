@@ -1,5 +1,24 @@
 import React, { useState, useEffect, useCallback } from "react";
+import {
+  Newspaper,
+  Users,
+  Bell,
+  Heart,
+  MessageCircle,
+  Trash2,
+  UserPlus,
+  Check,
+  X,
+} from "lucide-react";
 import { supabase } from "../supabaseClient";
+import Card from "./ui/Card";
+import Button from "./ui/Button";
+
+const SUB_TABS = [
+  { key: "feed", label: "Feed", icon: Newspaper },
+  { key: "friends", label: "Friends", icon: Users },
+  { key: "notifications", label: "Alerts", icon: Bell },
+];
 
 export default function SocialFeed({ session }) {
   const [activeSubTab, setActiveSubTab] = useState("feed");
@@ -8,7 +27,6 @@ export default function SocialFeed({ session }) {
   const [uploading, setUploading] = useState(false);
   const [imageFile, setImageFile] = useState(null);
 
-  // Search & Live Auto-Complete States
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -16,14 +34,12 @@ export default function SocialFeed({ session }) {
   const [friendRequests, setFriendRequests] = useState([]);
   const [friendsList, setFriendsList] = useState([]);
 
-  // Notifications
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [commentInputs, setCommentInputs] = useState({});
   const userId = session?.user?.id;
 
-  // 1. Live Auto-Search Users Effect (CORRECTED)
   useEffect(() => {
     const searchUsers = async () => {
       if (!searchQuery.trim()) {
@@ -34,11 +50,10 @@ export default function SocialFeed({ session }) {
 
       setIsSearching(true);
 
-      // Search profiles by display name or email using ilike (case-insensitive)
       const { data, error } = await supabase
         .from("profiles")
         .select("id, name, email, avatar_url")
-        .neq("id", userId) 
+        .neq("id", userId)
         .or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
         .limit(5);
 
@@ -57,28 +72,30 @@ export default function SocialFeed({ session }) {
     return () => clearTimeout(timer);
   }, [searchQuery, userId]);
 
-  // Fetch Feed Posts
   const fetchPosts = useCallback(async () => {
     const { data, error } = await supabase
       .from("posts")
-      .select(`
+      .select(
+        `
         *,
         profiles (name, avatar_url),
         post_likes (user_id),
         post_comments (*, profiles (name, avatar_url))
-      `)
+      `,
+      )
       .order("created_at", { ascending: false });
 
     if (!error) setPosts(data || []);
   }, []);
 
-  // Fetch Friends & Requests
   const fetchFriendData = useCallback(async () => {
     if (!userId) return;
 
     const { data: requests } = await supabase
       .from("friendships")
-      .select("*, requester:profiles!friendships_requester_id_fkey(id, name, avatar_url)")
+      .select(
+        "*, requester:profiles!friendships_requester_id_fkey(id, name, avatar_url)",
+      )
       .eq("addressee_id", userId)
       .eq("status", "pending");
 
@@ -86,14 +103,15 @@ export default function SocialFeed({ session }) {
 
     const { data: friends } = await supabase
       .from("friendships")
-      .select("*, requester:profiles!friendships_requester_id_fkey(name, avatar_url), addressee:profiles!friendships_addressee_id_fkey(name, avatar_url)")
+      .select(
+        "*, requester:profiles!friendships_requester_id_fkey(name, avatar_url), addressee:profiles!friendships_addressee_id_fkey(name, avatar_url)",
+      )
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
       .eq("status", "accepted");
 
     setFriendsList(friends || []);
   }, [userId]);
 
-  // Fetch Notifications
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
 
@@ -126,7 +144,7 @@ export default function SocialFeed({ session }) {
         },
         () => {
           fetchNotifications();
-        }
+        },
       )
       .subscribe();
 
@@ -135,10 +153,13 @@ export default function SocialFeed({ session }) {
     };
   }, [fetchPosts, fetchFriendData, fetchNotifications, userId]);
 
-  // Send Friend Request from Dropdown (CORRECTED)
   const handleSendRequestToUser = async (targetUser) => {
     const { error: friendErr } = await supabase.from("friendships").insert([
-      { requester_id: userId, addressee_id: targetUser.id, status: "pending" },
+      {
+        requester_id: userId,
+        addressee_id: targetUser.id,
+        status: "pending",
+      },
     ]);
 
     if (friendErr) {
@@ -153,13 +174,11 @@ export default function SocialFeed({ session }) {
         },
       ]);
 
-      alert(`Friend request sent to ${targetUser.name || "user"}!`);
       setSearchQuery("");
       setSearchResults([]);
     }
   };
 
-  // Create Post
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!caption && !imageFile) return;
@@ -178,11 +197,15 @@ export default function SocialFeed({ session }) {
 
         if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+        const { data } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(filePath);
         imageUrl = data.publicUrl;
       }
 
-      await supabase.from("posts").insert([{ user_id: userId, caption, image_url: imageUrl }]);
+      await supabase
+        .from("posts")
+        .insert([{ user_id: userId, caption, image_url: imageUrl }]);
       setCaption("");
       setImageFile(null);
       fetchPosts();
@@ -193,7 +216,18 @@ export default function SocialFeed({ session }) {
     }
   };
 
-  // Respond to Friend Request
+  const handleDeletePost = async (postId) => {
+    if (!window.confirm("Are you sure you want to delete this post?")) return;
+
+    const { error } = await supabase.from("posts").delete().eq("id", postId);
+
+    if (error) {
+      alert("Error deleting post: " + error.message);
+    } else {
+      fetchPosts();
+    }
+  };
+
   const handleRespondRequest = async (request, newStatus) => {
     await supabase
       .from("friendships")
@@ -231,9 +265,15 @@ export default function SocialFeed({ session }) {
     const existingLike = post.post_likes?.find((l) => l.user_id === userId);
 
     if (existingLike) {
-      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", userId);
+      await supabase
+        .from("post_likes")
+        .delete()
+        .eq("post_id", post.id)
+        .eq("user_id", userId);
     } else {
-      await supabase.from("post_likes").insert([{ post_id: post.id, user_id: userId }]);
+      await supabase
+        .from("post_likes")
+        .insert([{ post_id: post.id, user_id: userId }]);
 
       if (post.user_id !== userId) {
         await supabase.from("notifications").insert([
@@ -253,231 +293,541 @@ export default function SocialFeed({ session }) {
     const text = commentInputs[postId];
     if (!text) return;
 
-    await supabase.from("post_comments").insert([{ post_id: postId, user_id: userId, comment_text: text }]);
+    await supabase
+      .from("post_comments")
+      .insert([{ post_id: postId, user_id: userId, comment_text: text }]);
     setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
     fetchPosts();
   };
 
   return (
-    <div style={{ padding: "15px", fontFamily: "sans-serif" }}>
-      {/* Navigation Bar */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "15px" }}>
-        <button onClick={() => setActiveSubTab("feed")} style={subTabStyle(activeSubTab === "feed")}>
-          📰 Feed
-        </button>
-        <button onClick={() => setActiveSubTab("friends")} style={subTabStyle(activeSubTab === "friends")}>
-          👥 Friends ({friendRequests.length})
-        </button>
-        <button onClick={markNotificationsRead} style={subTabStyle(activeSubTab === "notifications")}>
-          🔔 Alerts {unreadCount > 0 && <span style={badgeStyle}>{unreadCount}</span>}
-        </button>
+    <div
+      style={{
+        padding: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "14px",
+      }}
+    >
+      {/* Sub-tab bar — icon+label pills matching the main nav language */}
+      <div style={{ display: "flex", gap: "8px" }}>
+        {SUB_TABS.map(({ key, label, icon: Icon }) => {
+          const isActive = activeSubTab === key;
+          const onClick =
+            key === "notifications"
+              ? markNotificationsRead
+              : () => setActiveSubTab(key);
+          return (
+            <button key={key} onClick={onClick} style={subTabStyle(isActive)}>
+              <Icon size={15} />
+              {label}
+              {key === "friends" && friendRequests.length > 0 && (
+                <span style={badgeStyle}>{friendRequests.length}</span>
+              )}
+              {key === "notifications" && unreadCount > 0 && (
+                <span style={badgeStyle}>{unreadCount}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* --- FEED TAB --- */}
       {activeSubTab === "feed" && (
-        <div>
-          <div style={cardStyle}>
-            <h4 style={{ margin: "0 0 10px 0" }}>Create Post</h4>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <Card>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              Create post
+            </h4>
             <textarea
               placeholder="Share a workout victory or meal log..."
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              style={{ width: "100%", height: "60px", marginBottom: "10px", padding: "8px", boxSizing: "border-box" }}
+              style={textareaStyle}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} />
-              <button onClick={handleCreatePost} disabled={uploading} style={primaryBtnStyle}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "10px",
+              }}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setImageFile(e.target.files[0])}
+                style={{ fontSize: "12px", maxWidth: "150px" }}
+              />
+              <Button size="sm" onClick={handleCreatePost} disabled={uploading}>
                 {uploading ? "Posting..." : "Post"}
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
 
           {posts.map((post) => {
             const isLiked = post.post_likes?.some((l) => l.user_id === userId);
             return (
-              <div key={post.id} style={cardStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                  <img
-                    src={post.profiles?.avatar_url || "https://via.placeholder.com/40"}
-                    alt="avatar"
-                    style={{ width: "35px", height: "35px", borderRadius: "50%", objectFit: "cover" }}
-                  />
-                  <strong>{post.profiles?.name || "Fitness User"}</strong>
+              <Card key={post.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <img
+                      src={
+                        post.profiles?.avatar_url ||
+                        "https://via.placeholder.com/40"
+                      }
+                      alt="avatar"
+                      style={{
+                        width: "35px",
+                        height: "35px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
+                    />
+                    <strong style={{ fontSize: "14px" }}>
+                      {post.profiles?.name || "Fitness User"}
+                    </strong>
+                  </div>
+
+                  {post.user_id === userId && (
+                    <button
+                      onClick={() => handleDeletePost(post.id)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--danger)",
+                        display: "flex",
+                      }}
+                      title="Delete Post"
+                      aria-label="Delete post"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
 
-                <p style={{ margin: "5px 0" }}>{post.caption}</p>
+                <p style={{ margin: "5px 0", fontSize: "14px" }}>
+                  {post.caption}
+                </p>
 
                 {post.image_url && (
                   <img
                     src={post.image_url}
                     alt="Post media"
-                    style={{ width: "100%", maxHeight: "300px", objectFit: "cover", borderRadius: "6px", margin: "10px 0" }}
+                    style={{
+                      width: "100%",
+                      maxHeight: "300px",
+                      objectFit: "cover",
+                      borderRadius: "var(--radius-md)",
+                      margin: "10px 0",
+                    }}
                   />
                 )}
 
-                <div style={{ display: "flex", gap: "15px", alignItems: "center", margin: "10px 0" }}>
-                  <button onClick={() => handleToggleLike(post)} style={likeBtnStyle(isLiked)}>
-                    {isLiked ? "❤️ Liked" : "🤍 Like"} ({post.post_likes?.length || 0})
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "18px",
+                    alignItems: "center",
+                    margin: "10px 0",
+                  }}
+                >
+                  <button
+                    onClick={() => handleToggleLike(post)}
+                    style={likeBtnStyle(isLiked)}
+                  >
+                    <Heart size={16} fill={isLiked ? "var(--ember)" : "none"} />
+                    {post.post_likes?.length || 0}
                   </button>
-                  <span style={{ fontSize: "14px", color: "#666" }}>
-                    💬 {post.post_comments?.length || 0} Comments
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "var(--ink-soft)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <MessageCircle size={15} />
+                    {post.post_comments?.length || 0}
                   </span>
                 </div>
 
-                <div style={{ backgroundColor: "#f9f9f9", padding: "8px", borderRadius: "6px" }}>
+                <div
+                  style={{
+                    backgroundColor: "var(--paper)",
+                    padding: "10px",
+                    borderRadius: "var(--radius-sm)",
+                  }}
+                >
                   {post.post_comments?.map((c) => (
-                    <div key={c.id} style={{ fontSize: "13px", marginBottom: "4px" }}>
+                    <div
+                      key={c.id}
+                      style={{ fontSize: "13px", marginBottom: "4px" }}
+                    >
                       <strong>{c.profiles?.name || "User"}: </strong>
                       {c.comment_text}
                     </div>
                   ))}
 
-                  <div style={{ display: "flex", gap: "5px", marginTop: "8px" }}>
+                  <div
+                    style={{ display: "flex", gap: "6px", marginTop: "8px" }}
+                  >
                     <input
                       type="text"
                       placeholder="Write a comment..."
                       value={commentInputs[post.id] || ""}
-                      onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                      style={{ flex: 1, padding: "6px", fontSize: "12px" }}
+                      onChange={(e) =>
+                        setCommentInputs({
+                          ...commentInputs,
+                          [post.id]: e.target.value,
+                        })
+                      }
+                      style={commentInputStyle}
                     />
-                    <button onClick={() => handleAddComment(post.id)} style={{ padding: "6px 10px", fontSize: "12px" }}>
+                    <Button size="sm" onClick={() => handleAddComment(post.id)}>
                       Send
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
 
-      {/* --- FRIENDS TAB WITH LIVE SEARCH DROPDOWN --- */}
+      {/* --- FRIENDS TAB --- */}
       {activeSubTab === "friends" && (
-        <div>
-          <div style={{ ...cardStyle, position: "relative" }}>
-            <h4 style={{ margin: "0 0 10px 0" }}>Find Users & Add Friends</h4>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <Card style={{ position: "relative" }}>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              Find users & add friends
+            </h4>
             <input
               type="text"
               placeholder="Search by name or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: "100%", padding: "10px", boxSizing: "border-box", fontSize: "14px" }}
+              style={searchInputStyle}
             />
 
-            {/* Live Dropdown Results */}
             {searchQuery.trim() !== "" && (
               <div style={dropdownStyle}>
                 {isSearching ? (
-                  <div style={{ padding: "10px", textAlign: "center", color: "#666" }}>Searching...</div>
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "var(--ink-soft)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    Searching...
+                  </div>
                 ) : searchResults.length === 0 ? (
-                  <div style={{ padding: "10px", textAlign: "center", color: "#666" }}>No users found for "{searchQuery}"</div>
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "var(--ink-soft)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    No users found for "{searchQuery}"
+                  </div>
                 ) : (
                   searchResults.map((user) => (
                     <div key={user.id} style={dropdownItemStyle}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
                         <img
-                          src={user.avatar_url || "https://via.placeholder.com/30"}
+                          src={
+                            user.avatar_url || "https://via.placeholder.com/30"
+                          }
                           alt="avatar"
-                          style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
+                          style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                          }}
                         />
                         <div>
-                          <strong style={{ display: "block", fontSize: "14px" }}>{user.name || "User"}</strong>
-                          <span style={{ fontSize: "11px", color: "#888" }}>{user.email || "No email"}</span>
+                          <strong
+                            style={{ display: "block", fontSize: "14px" }}
+                          >
+                            {user.name || "User"}
+                          </strong>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--ink-soft)",
+                            }}
+                          >
+                            {user.email || "No email"}
+                          </span>
                         </div>
                       </div>
-                      <button onClick={() => handleSendRequestToUser(user)} style={smallPrimaryBtnStyle}>
-                        Add Friend
-                      </button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSendRequestToUser(user)}
+                      >
+                        <UserPlus size={13} />
+                        Add
+                      </Button>
                     </div>
                   ))
                 )}
               </div>
             )}
-          </div>
+          </Card>
 
-          {/* Pending Requests */}
           {friendRequests.length > 0 && (
-            <div style={cardStyle}>
-              <h4>Pending Requests ({friendRequests.length})</h4>
+            <Card>
+              <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+                Pending requests ({friendRequests.length})
+              </h4>
               {friendRequests.map((req) => (
-                <div key={req.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                  <span><strong>{req.requester?.name || "A User"}</strong> sent a friend request.</span>
-                  <div style={{ display: "flex", gap: "5px" }}>
-                    <button onClick={() => handleRespondRequest(req, "accepted")} style={{ backgroundColor: "#28a745", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "4px", cursor: "pointer" }}>
-                      Accept
+                <div
+                  key={req.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <span style={{ fontSize: "13px" }}>
+                    <strong>{req.requester?.name || "A User"}</strong> sent a
+                    friend request.
+                  </span>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      onClick={() => handleRespondRequest(req, "accepted")}
+                      style={roundIconBtnStyle("var(--sprout)")}
+                      aria-label="Accept"
+                    >
+                      <Check size={14} />
                     </button>
-                    <button onClick={() => handleRespondRequest(req, "declined")} style={{ backgroundColor: "#dc3545", color: "#fff", border: "none", padding: "6px 12px", borderRadius: "4px", cursor: "pointer" }}>
-                      Decline
+                    <button
+                      onClick={() => handleRespondRequest(req, "declined")}
+                      style={roundIconBtnStyle("var(--danger)")}
+                      aria-label="Decline"
+                    >
+                      <X size={14} />
                     </button>
                   </div>
                 </div>
               ))}
-            </div>
+            </Card>
           )}
 
-          {/* Friends List */}
-          <div style={cardStyle}>
-            <h4>My Friends ({friendsList.length})</h4>
+          <Card>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              My friends ({friendsList.length})
+            </h4>
             {friendsList.length === 0 ? (
-              <p style={{ color: "#666" }}>No friends added yet.</p>
+              <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
+                No friends added yet.
+              </p>
             ) : (
               friendsList.map((f) => {
-                const friendProfile = f.requester_id === userId ? f.addressee : f.requester;
+                const friendProfile =
+                  f.requester_id === userId ? f.addressee : f.requester;
                 return (
-                  <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 0", borderBottom: "1px solid #eee" }}>
+                  <div
+                    key={f.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "8px 0",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
                     <img
-                      src={friendProfile?.avatar_url || "https://via.placeholder.com/30"}
+                      src={
+                        friendProfile?.avatar_url ||
+                        "https://via.placeholder.com/30"
+                      }
                       alt="avatar"
-                      style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
                     />
-                    <strong>{friendProfile?.name || "Friend"}</strong>
+                    <strong style={{ fontSize: "14px" }}>
+                      {friendProfile?.name || "Friend"}
+                    </strong>
                   </div>
                 );
               })
             )}
-          </div>
+          </Card>
         </div>
       )}
 
       {/* --- NOTIFICATIONS TAB --- */}
       {activeSubTab === "notifications" && (
-        <div>
-          <div style={cardStyle}>
-            <h4 style={{ margin: "0 0 10px 0" }}>Activity Notifications</h4>
-            {notifications.length === 0 ? (
-              <p style={{ color: "#666" }}>No notifications yet.</p>
-            ) : (
-              notifications.map((n) => (
-                <div key={n.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 0", borderBottom: "1px solid #eee" }}>
-                  <img
-                    src={n.actor?.avatar_url || "https://via.placeholder.com/30"}
-                    alt="avatar"
-                    style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
-                  />
-                  <div>
+        <Card>
+          <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+            Activity notifications
+          </h4>
+          {notifications.length === 0 ? (
+            <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
+              No notifications yet.
+            </p>
+          ) : (
+            notifications.map((n) => (
+              <div
+                key={n.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
+                <img
+                  src={n.actor?.avatar_url || "https://via.placeholder.com/30"}
+                  alt="avatar"
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                  }}
+                />
+                <div>
+                  <span style={{ fontSize: "13px" }}>
                     <strong>{n.actor?.name || "Someone"}</strong> {n.message}
-                    <div style={{ fontSize: "11px", color: "#999" }}>
-                      {new Date(n.created_at).toLocaleString()}
-                    </div>
+                  </span>
+                  <div style={{ fontSize: "11px", color: "var(--ink-faint)" }}>
+                    {new Date(n.created_at).toLocaleString()}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              </div>
+            ))
+          )}
+        </Card>
       )}
     </div>
   );
 }
 
-// Inline Styles
-const cardStyle = { border: "1px solid #ddd", borderRadius: "8px", padding: "12px", marginBottom: "15px", backgroundColor: "#fff" };
-const subTabStyle = (active) => ({ flex: 1, padding: "8px", border: "none", backgroundColor: active ? "#007bff" : "#eee", color: active ? "#fff" : "#333", borderRadius: "4px", fontWeight: "bold", cursor: "pointer", position: "relative" });
-const primaryBtnStyle = { backgroundColor: "#007bff", color: "#fff", border: "none", padding: "8px 12px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" };
-const smallPrimaryBtnStyle = { backgroundColor: "#007bff", color: "#fff", border: "none", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold", fontSize: "12px" };
-const likeBtnStyle = (isLiked) => ({ border: "none", background: "none", cursor: "pointer", fontWeight: "bold", color: isLiked ? "#e74c3c" : "#555" });
-const badgeStyle = { backgroundColor: "#dc3545", color: "white", borderRadius: "50%", padding: "2px 6px", fontSize: "10px", marginLeft: "5px" };
-
-// Auto-Complete Dropdown Styles
-const dropdownStyle = { border: "1px solid #007bff", borderRadius: "6px", backgroundColor: "#fff", marginTop: "5px", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" };
-const dropdownItemStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", borderBottom: "1px solid #eee" };
+// Styles
+const subTabStyle = (active) => ({
+  flex: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
+  padding: "9px",
+  border: active ? "1px solid var(--ember)" : "1px solid var(--line)",
+  backgroundColor: active ? "var(--ember-soft)" : "var(--card)",
+  color: active ? "var(--ember)" : "var(--ink-soft)",
+  borderRadius: "var(--radius-md)",
+  fontWeight: 600,
+  fontSize: "12px",
+  cursor: "pointer",
+  position: "relative",
+});
+const badgeStyle = {
+  backgroundColor: "var(--ember)",
+  color: "white",
+  borderRadius: "50%",
+  minWidth: "16px",
+  height: "16px",
+  padding: "0 3px",
+  fontSize: "10px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginLeft: "2px",
+};
+const likeBtnStyle = (isLiked) => ({
+  border: "none",
+  background: "none",
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: "13px",
+  color: isLiked ? "var(--ember)" : "var(--ink-soft)",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+});
+const roundIconBtnStyle = (color) => ({
+  width: "30px",
+  height: "30px",
+  borderRadius: "50%",
+  border: "none",
+  backgroundColor: color,
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+});
+const textareaStyle = {
+  width: "100%",
+  height: "60px",
+  padding: "10px",
+  boxSizing: "border-box",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
+  fontSize: "14px",
+  fontFamily: "var(--font-body)",
+  resize: "vertical",
+};
+const commentInputStyle = {
+  flex: 1,
+  padding: "8px 10px",
+  fontSize: "12px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
+};
+const searchInputStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  boxSizing: "border-box",
+  fontSize: "14px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
+};
+const dropdownStyle = {
+  border: "1px solid var(--ember)",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--card)",
+  marginTop: "8px",
+  boxShadow: "var(--shadow-press)",
+  overflow: "hidden",
+};
+const dropdownItemStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "10px 12px",
+  borderBottom: "1px solid var(--line)",
+};

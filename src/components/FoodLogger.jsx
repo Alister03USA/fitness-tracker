@@ -1,10 +1,17 @@
 import React, { useState } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  Camera,
+  Image as ImageIcon,
+  Sparkles,
+  ChevronDown,
+} from "lucide-react";
+import Card from "./ui/Card";
+import Button from "./ui/Button";
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
 export default function FoodLogger({ onAddMeal }) {
-  const [logMethod, setLogMethod] = useState("photo");
   const [foodName, setFoodName] = useState("");
   const [calories, setCalories] = useState("");
 
@@ -22,18 +29,18 @@ export default function FoodLogger({ onAddMeal }) {
   const [imageFile, setImageFile] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [scanComplete, setScanComplete] = useState(false);
 
-  // Handle Image File Selection
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setImageFile(file);
       setSelectedImage(URL.createObjectURL(file));
       setErrorMsg("");
+      setScanComplete(false);
     }
   };
 
-  // Convert File to Base64
   const fileToGenerativePart = async (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -50,7 +57,6 @@ export default function FoodLogger({ onAddMeal }) {
     });
   };
 
-  // Analyze Photo for Calories + Macros + Micros
   const handleAnalyzePhoto = async () => {
     if (!imageFile) return;
     setIsAnalyzing(true);
@@ -60,7 +66,6 @@ export default function FoodLogger({ onAddMeal }) {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const imagePart = await fileToGenerativePart(imageFile);
 
-      // Prompt asking for detailed Macro & Micro nutrient breakdown
       const prompt = `
         Analyze this food image. Identify the meal and estimate its total calories, macronutrients, and key micronutrients.
         Respond STRICTLY in JSON format without markdown wrapping, matching this exact schema:
@@ -82,7 +87,6 @@ export default function FoodLogger({ onAddMeal }) {
       const cleanJson = responseText.replace(/```json|```/g, "").trim();
       const data = JSON.parse(cleanJson);
 
-      // Auto-fill form state
       setFoodName(data.foodName || "Unrecognized Dish");
       setCalories(data.calories || 0);
       setProtein(data.proteinGrams || 0);
@@ -91,10 +95,11 @@ export default function FoodLogger({ onAddMeal }) {
       setFiber(data.fiberGrams || 0);
       setSugar(data.sugarGrams || 0);
       setSodium(data.sodiumMg || 0);
+      setScanComplete(true);
     } catch (err) {
       console.error(err);
       setErrorMsg(
-        "Failed to analyze image. Please try again or enter details manually.",
+        "Couldn't read that photo. Try another angle, or enter the details manually below.",
       );
     } finally {
       setIsAnalyzing(false);
@@ -116,7 +121,6 @@ export default function FoodLogger({ onAddMeal }) {
       sodium: parseInt(sodium) || 0,
     });
 
-    // Reset Form
     setFoodName("");
     setCalories("");
     setProtein("");
@@ -127,303 +131,316 @@ export default function FoodLogger({ onAddMeal }) {
     setSodium("");
     setSelectedImage(null);
     setImageFile(null);
-    alert(`Logged ${foodName} with full nutrient breakdown!`);
+    setScanComplete(false);
   };
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
-      <h2>Log Activity & Nutrition</h2>
+    <div
+      style={{
+        padding: "20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "18px",
+      }}
+    >
+      <h2 style={{ fontSize: "20px" }}>Log a meal</h2>
 
-      {/* Mode Switcher */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <button
-          onClick={() => setLogMethod("photo")}
-          style={toggleBtnStyle(logMethod === "photo")}
+      {/* HERO: AI photo scan — the app's differentiator gets first position and full weight */}
+      <Card accent="var(--ember)" style={{ backgroundColor: "#FFF8F4" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "4px",
+          }}
         >
-          📷 AI Photo Scan
-        </button>
-        <button
-          onClick={() => setLogMethod("manual")}
-          style={toggleBtnStyle(logMethod === "manual")}
-        >
-          ✍️ Manual Input
-        </button>
-      </div>
-
-      {/* Photo Mode */}
-      {logMethod === "photo" && (
-        <div style={cardStyle}>
-          <h3>Capture or Upload Meal Photo</h3>
-
-          {/* Buttons to select Camera vs Gallery */}
-          <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-            <label style={cameraBtnStyle}>
-              📸 Take Photo (Camera)
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment" /* Forces rear camera on mobile devices */
-                onChange={handleImageChange}
-                style={{ display: "none" }}
-              />
-            </label>
-
-            <label style={galleryBtnStyle}>
-              🖼️ Upload Image
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                style={{ display: "none" }}
-              />
-            </label>
-          </div>
-
-          {/* Selected/Captured Image Preview */}
-          {selectedImage && (
-            <div style={{ textAlign: "center", marginBottom: "15px" }}>
-              <img
-                src={selectedImage}
-                alt="Captured Meal"
-                style={{
-                  width: "100%",
-                  maxHeight: "250px",
-                  objectFit: "cover",
-                  borderRadius: "8px",
-                  border: "1px solid #ccc",
-                }}
-              />
-              <button
-                onClick={handleAnalyzePhoto}
-                disabled={isAnalyzing}
-                style={actionBtnStyle}
-              >
-                {isAnalyzing
-                  ? "⚡ Gemini AI Analyzing Nutrients..."
-                  : "✨ Analyze Meal with Gemini AI"}
-              </button>
-            </div>
-          )}
-
-          {errorMsg && (
-            <p style={{ color: "red", fontSize: "14px", marginTop: "10px" }}>
-              {errorMsg}
-            </p>
-          )}
+          <Sparkles size={18} color="var(--ember)" />
+          <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px" }}>
+            Scan a meal
+          </h3>
         </div>
-      )}
+        <p
+          style={{
+            fontSize: "13px",
+            color: "var(--ink-soft)",
+            marginBottom: "14px",
+          }}
+        >
+          Snap a photo and Gemini fills in calories and nutrients for you.
+        </p>
 
-      {/* Meal & Nutrient Form */}
+        <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
+          <label style={photoBtnStyle}>
+            <Camera size={18} />
+            Camera
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageChange}
+              style={{ display: "none" }}
+            />
+          </label>
+          <label
+            style={{
+              ...photoBtnStyle,
+              backgroundColor: "var(--card)",
+              color: "var(--ink)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <ImageIcon size={18} />
+            Gallery
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              style={{ display: "none" }}
+            />
+          </label>
+        </div>
+
+        {selectedImage && (
+          <div style={{ textAlign: "center" }}>
+            <img
+              src={selectedImage}
+              alt="Selected meal"
+              style={{
+                width: "100%",
+                maxHeight: "220px",
+                objectFit: "cover",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--line)",
+                marginBottom: "12px",
+              }}
+            />
+            <Button
+              type="button"
+              fullWidth
+              onClick={handleAnalyzePhoto}
+              disabled={isAnalyzing}
+            >
+              <Sparkles size={16} />
+              {isAnalyzing
+                ? "Analyzing nutrients..."
+                : "Analyze with Gemini AI"}
+            </Button>
+          </div>
+        )}
+
+        {scanComplete && (
+          <p
+            style={{
+              fontSize: "13px",
+              color: "var(--sprout)",
+              marginTop: "10px",
+              fontWeight: 500,
+            }}
+          >
+            ✓ Filled in below — review and save, or edit anything first.
+          </p>
+        )}
+
+        {errorMsg && (
+          <p
+            style={{
+              color: "var(--danger)",
+              fontSize: "13px",
+              marginTop: "10px",
+            }}
+          >
+            {errorMsg}
+          </p>
+        )}
+      </Card>
+
+      {/* Core fields — always visible since every entry needs these */}
       <form
         onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+        style={{ display: "flex", flexDirection: "column", gap: "14px" }}
       >
-        <div>
-          <label>
-            <strong>Food Name:</strong>
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. Salmon Bowl"
-            value={foodName}
-            onChange={(e) => setFoodName(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
+        <Card style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div>
+            <label style={labelStyle}>Food name</label>
+            <input
+              type="text"
+              placeholder="e.g. Salmon bowl"
+              value={foodName}
+              onChange={(e) => setFoodName(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Calories (kcal)</label>
+            <input
+              type="number"
+              placeholder="e.g. 550"
+              value={calories}
+              onChange={(e) => setCalories(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+        </Card>
 
-        <div>
-          <label>
-            <strong>Total Calories (kcal):</strong>
-          </label>
-          <input
-            type="number"
-            placeholder="e.g. 550"
-            value={calories}
-            onChange={(e) => setCalories(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
+        {/* Progressive disclosure: collapsed by default for manual entry,
+            auto-opened once a scan has filled it in so users can review it */}
+        <details open={scanComplete}>
+          <summary style={summaryStyle}>
+            <span>Nutrition details</span>
+            <ChevronDown size={16} />
+          </summary>
 
-        {/* MACRONUTRIENTS SECTION */}
-        <div style={sectionBoxStyle}>
-          <h4 style={{ margin: "0 0 10px 0", color: "#007bff" }}>
-            📊 Macronutrients (g)
-          </h4>
-          <div
+          <Card
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: "10px",
+              marginTop: "10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
             }}
           >
             <div>
-              <label style={subLabelStyle}>Protein (g)</label>
-              <input
-                type="number"
-                placeholder="30"
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                style={inputStyle}
-              />
+              <h4 style={sectionHeadingStyle("var(--sprout)")}>
+                Macronutrients (g)
+              </h4>
+              <div style={gridStyle}>
+                <MiniField
+                  label="Protein"
+                  value={protein}
+                  onChange={setProtein}
+                  placeholder="30"
+                />
+                <MiniField
+                  label="Carbs"
+                  value={carbs}
+                  onChange={setCarbs}
+                  placeholder="45"
+                />
+                <MiniField
+                  label="Fat"
+                  value={fat}
+                  onChange={setFat}
+                  placeholder="15"
+                />
+              </div>
             </div>
             <div>
-              <label style={subLabelStyle}>Carbs (g)</label>
-              <input
-                type="number"
-                placeholder="45"
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                style={inputStyle}
-              />
+              <h4 style={sectionHeadingStyle("var(--plum)")}>Micronutrients</h4>
+              <div style={gridStyle}>
+                <MiniField
+                  label="Fiber (g)"
+                  value={fiber}
+                  onChange={setFiber}
+                  placeholder="5"
+                />
+                <MiniField
+                  label="Sugar (g)"
+                  value={sugar}
+                  onChange={setSugar}
+                  placeholder="8"
+                />
+                <MiniField
+                  label="Sodium (mg)"
+                  value={sodium}
+                  onChange={setSodium}
+                  placeholder="400"
+                />
+              </div>
             </div>
-            <div>
-              <label style={subLabelStyle}>Fat (g)</label>
-              <input
-                type="number"
-                placeholder="15"
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-        </div>
+          </Card>
+        </details>
 
-        {/* MICRONUTRIENTS SECTION */}
-        <div style={sectionBoxStyle}>
-          <h4 style={{ margin: "0 0 10px 0", color: "#28a745" }}>
-            🥗 Micronutrients
-          </h4>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: "10px",
-            }}
-          >
-            <div>
-              <label style={subLabelStyle}>Fiber (g)</label>
-              <input
-                type="number"
-                placeholder="5"
-                value={fiber}
-                onChange={(e) => setFiber(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={subLabelStyle}>Sugar (g)</label>
-              <input
-                type="number"
-                placeholder="8"
-                value={sugar}
-                onChange={(e) => setSugar(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={subLabelStyle}>Sodium (mg)</label>
-              <input
-                type="number"
-                placeholder="400"
-                value={sodium}
-                onChange={(e) => setSodium(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-        </div>
-
-        <button type="submit" style={saveBtnStyle}>
-          💾 Save Full Meal Log
-        </button>
+        <Button type="submit" fullWidth size="md">
+          Save meal
+        </Button>
       </form>
     </div>
   );
 }
 
-// Inline Styles
-const cardStyle = {
-  border: "1px dashed #007bff",
-  borderRadius: "8px",
-  padding: "15px",
-  marginBottom: "15px",
-  backgroundColor: "#f0f7ff",
-};
-const sectionBoxStyle = {
-  border: "1px solid #e0e0e0",
-  borderRadius: "8px",
-  padding: "12px",
-  backgroundColor: "#fafafa",
-};
-const subLabelStyle = {
-  fontSize: "12px",
-  color: "#555",
+function MiniField({ label, value, onChange, placeholder }) {
+  return (
+    <div>
+      <label
+        style={{
+          fontSize: "11px",
+          color: "var(--ink-soft)",
+          display: "block",
+          marginBottom: "4px",
+        }}
+      >
+        {label}
+      </label>
+      <input
+        type="number"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
+const labelStyle = {
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "var(--ink)",
   display: "block",
-  marginBottom: "4px",
+  marginBottom: "5px",
 };
+
 const inputStyle = {
   width: "100%",
-  padding: "10px",
-  fontSize: "15px",
-  borderRadius: "4px",
-  border: "1px solid #ccc",
-  marginTop: "2px",
+  padding: "10px 12px",
+  fontSize: "14px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--line)",
   boxSizing: "border-box",
+  backgroundColor: "var(--card)",
+  color: "var(--ink)",
 };
-const toggleBtnStyle = (isActive) => ({
-  flex: 1,
-  padding: "10px",
-  border: "1px solid #007bff",
-  borderRadius: "6px",
-  backgroundColor: isActive ? "#007bff" : "#fff",
-  color: isActive ? "#fff" : "#007bff",
-  fontWeight: "bold",
-  cursor: "pointer",
+
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr 1fr",
+  gap: "10px",
+};
+
+const sectionHeadingStyle = (color) => ({
+  fontSize: "12px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color,
+  margin: "0 0 10px 0",
 });
-const actionBtnStyle = {
-  marginTop: "10px",
-  padding: "12px",
-  width: "100%",
-  backgroundColor: "#28a745",
-  color: "white",
-  border: "none",
-  borderRadius: "6px",
-  fontWeight: "bold",
-  cursor: "pointer",
-};
-const saveBtnStyle = {
-  padding: "14px",
-  backgroundColor: "#333",
-  color: "white",
-  border: "none",
-  borderRadius: "6px",
-  fontSize: "16px",
-  fontWeight: "bold",
-  cursor: "pointer",
-  marginTop: "10px",
-};
 
-const cameraBtnStyle = {
-  flex: 1,
-  padding: "12px",
-  backgroundColor: "#28a745",
-  color: "white",
-  textAlign: "center",
-  borderRadius: "6px",
-  fontWeight: "bold",
+const summaryStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 16px",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-md)",
   cursor: "pointer",
   fontSize: "14px",
+  fontWeight: 600,
+  listStyle: "none",
 };
 
-const galleryBtnStyle = {
+const photoBtnStyle = {
   flex: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
   padding: "12px",
-  backgroundColor: "#6c757d",
-  color: "white",
-  textAlign: "center",
-  borderRadius: "6px",
-  fontWeight: "bold",
-  cursor: "pointer",
+  backgroundColor: "var(--ember)",
+  color: "#fff",
+  borderRadius: "var(--radius-md)",
+  fontWeight: 600,
   fontSize: "14px",
+  cursor: "pointer",
 };
