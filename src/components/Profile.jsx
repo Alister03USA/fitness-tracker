@@ -49,6 +49,7 @@ export default function Profile({ session, onUpdateGoals }) {
         setGender(data.gender || "male");
         setHeightCm(data.height_cm || "");
         setWeightKg(data.weight_kg || "");
+        setActivityLevel(data.activity_level || "1.375");
         setPrivacySetting(data.privacy_setting || "private");
         setAvatarUrl(data.avatar_url || "");
       }
@@ -129,6 +130,7 @@ export default function Profile({ session, onUpdateGoals }) {
         height_cm: parseFloat(heightCm),
         weight_kg: parseFloat(weightKg),
         privacy_setting: privacySetting,
+        activity_level: parseFloat(activityLevel),
         avatar_url: avatarUrl,
         updated_at: new Date(),
       };
