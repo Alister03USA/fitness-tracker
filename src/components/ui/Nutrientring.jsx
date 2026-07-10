@@ -7,7 +7,7 @@ import React from "react";
  * rings: [{ label, color, consumed, goal }] - outer to inner order in the array
  * centerLabel / centerValue: the big number shown in the middle (usually calories remaining)
  */
-export default function Nutrientring({
+export default function NutrientRing({
   rings,
   centerValue,
   centerLabel,

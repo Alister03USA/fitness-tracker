@@ -6,11 +6,15 @@ import {
   MessageCircle,
   User,
   LogOut,
+  UtensilsCrossed,
+  Activity,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
 import FoodLogger from "./components/FoodLogger";
+import ExerciseLogger from "./components/ExerciseLogger";
+import FoodHistory from "./components/FoodHistory";
 import SocialFeed from "./components/SocialFeed";
 import Profile from "./components/Profile";
 import Chat from "./components/Chat";
@@ -27,16 +31,16 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [logMode, setLogMode] = useState("meal"); // "meal" | "exercise"
   const [avatarUrl, setAvatarUrl] = useState("");
-  
-  // NEW: State to track the calendar day being viewed
-  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const [userStats, setUserStats] = useState({
     stepGoal: 10000,
-    steps: 7420,
+    steps: 0,
     calorieGoal: 2200,
     caloriesConsumed: 0,
+    // Standard macro split (30% protein / 40% carbs / 30% fat) derived from
+    // the calorie goal, expressed in grams (protein/carbs = 4 kcal/g, fat = 9 kcal/g)
     proteinGoal: Math.round((2200 * 0.3) / 4),
     carbsGoal: Math.round((2200 * 0.4) / 4),
     fatGoal: Math.round((2200 * 0.3) / 9),
@@ -46,6 +50,14 @@ export default function App() {
   });
 
   const [todayLogs, setTodayLogs] = useState([]);
+  const [todayWorkouts, setTodayWorkouts] = useState([]);
+
+  // Local YYYY-MM-DD (not UTC) so a workout logged at 11pm doesn't roll into tomorrow
+  const todayDateString = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    return new Date(d.getTime() - offset * 60000).toISOString().split("T")[0];
+  };
 
   const handleUpdateGoals = (newCalorieGoal, newAvatarUrl) => {
     setUserStats((prev) => ({
@@ -76,22 +88,15 @@ export default function App() {
     };
   }, []);
 
-  // UPDATED: Dynamically filter logs based on selectedDate
-  const fetchLogsForDate = useCallback(async () => {
+  // Filter logs explicitly for the current calendar day to reset stats at midnight
+  const fetchTodayLogs = useCallback(async () => {
     if (!session?.user?.id) return;
-
-    const startOfDay = new Date(selectedDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(selectedDate);
-    endOfDay.setHours(23, 59, 59, 999);
 
     const { data, error } = await supabase
       .from("logs")
       .select("id, food_name, calories, protein, carbs, fat, created_at")
       .eq("user_id", session.user.id)
-      .gte("created_at", startOfDay.toISOString())
-      .lte("created_at", endOfDay.toISOString())
+      .eq("log_date", todayDateString())
       .order("created_at", { ascending: false });
 
     if (!error && data) {
@@ -114,14 +119,104 @@ export default function App() {
       }));
       setTodayLogs(data);
     }
-  }, [session, selectedDate]);
+  }, [session]);
 
-  // Refetch automatically if the date changes
+  const fetchTodaySteps = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const { data } = await supabase
+      .from("daily_steps")
+      .select("steps")
+      .eq("user_id", session.user.id)
+      .eq("log_date", todayDateString())
+      .maybeSingle();
+
+    setUserStats((prev) => ({ ...prev, steps: data?.steps || 0 }));
+  }, [session]);
+
+  const fetchTodayWorkouts = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const { data } = await supabase
+      .from("workouts")
+      .select("id, name, calories_burned, duration_minutes, created_at")
+      .eq("user_id", session.user.id)
+      .eq("workout_date", todayDateString())
+      .order("created_at", { ascending: false });
+
+    setTodayWorkouts(data || []);
+  }, [session]);
+
   useEffect(() => {
     if (session) {
-      fetchLogsForDate();
+      fetchTodayLogs();
+      fetchTodaySteps();
+      fetchTodayWorkouts();
     }
-  }, [session, fetchLogsForDate]);
+  }, [session, fetchTodayLogs, fetchTodaySteps, fetchTodayWorkouts]);
+
+  const handleUpdateSteps = useCallback(
+    async (newSteps) => {
+      if (!session?.user?.id) return;
+
+      const { error } = await supabase.from("daily_steps").upsert(
+        {
+          user_id: session.user.id,
+          log_date: todayDateString(),
+          steps: newSteps,
+          source: "manual",
+          updated_at: new Date(),
+        },
+        { onConflict: "user_id,log_date" },
+      );
+
+      if (error) {
+        alert("Failed to save steps: " + error.message);
+      } else {
+        setUserStats((prev) => ({ ...prev, steps: newSteps }));
+      }
+    },
+    [session],
+  );
+
+  const handleAddWorkout = useCallback(
+    async (workout) => {
+      if (!session?.user?.id) return;
+
+      const { error } = await supabase.from("workouts").insert([
+        {
+          user_id: session.user.id,
+          name: workout.name,
+          calories_burned: workout.caloriesBurned,
+          duration_minutes: workout.durationMinutes,
+          workout_date: todayDateString(),
+          source: "manual",
+        },
+      ]);
+
+      if (error) {
+        alert("Failed to save workout: " + error.message);
+      } else {
+        await fetchTodayWorkouts();
+        setActiveTab("dashboard");
+      }
+    },
+    [session, fetchTodayWorkouts],
+  );
+
+  const handleDeleteWorkout = useCallback(
+    async (workoutId) => {
+      const { error } = await supabase.from("workouts").delete().eq("id", workoutId);
+      if (error) {
+        alert("Failed to delete workout: " + error.message);
+      } else {
+        fetchTodayWorkouts();
+      }
+    },
+    [fetchTodayWorkouts],
+  );
+
+  const caloriesBurned = todayWorkouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
 
   const handleAddMeal = useCallback(
     async (meal) => {
@@ -138,19 +233,18 @@ export default function App() {
           fiber: meal.fiber,
           sugar: meal.sugar,
           sodium: meal.sodium,
+          log_date: todayDateString(),
         },
       ]);
 
       if (error) {
         alert("Failed to save log to database: " + error.message);
       } else {
-        // Automatically jump back to Today to see the new entry
-        setSelectedDate(new Date()); 
-        fetchLogsForDate();
+        fetchTodayLogs();
         setActiveTab("dashboard");
       }
     },
-    [session, fetchLogsForDate],
+    [session, fetchTodayLogs],
   );
 
   if (loading) {
@@ -246,14 +340,48 @@ export default function App() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {activeTab === "dashboard" && (
-          <Dashboard 
-            userStats={userStats} 
-            todayLogs={todayLogs} 
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
+          <Dashboard
+            userStats={userStats}
+            todayLogs={todayLogs}
+            todayWorkouts={todayWorkouts}
+            caloriesBurned={caloriesBurned}
+            onUpdateSteps={handleUpdateSteps}
+            onDeleteWorkout={handleDeleteWorkout}
+            onOpenHistory={() => setActiveTab("history")}
           />
         )}
-        {activeTab === "log" && <FoodLogger onAddMeal={handleAddMeal} />}
+        {activeTab === "history" && (
+          <FoodHistory session={session} onBack={() => setActiveTab("dashboard")} />
+        )}
+        {activeTab === "log" && (
+          <div>
+            <div style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}>
+              <button
+                onClick={() => setLogMode("meal")}
+                style={logModeBtnStyle(logMode === "meal")}
+              >
+                <UtensilsCrossed size={15} />
+                Meal
+              </button>
+              <button
+                onClick={() => setLogMode("exercise")}
+                style={logModeBtnStyle(logMode === "exercise")}
+              >
+                <Activity size={15} />
+                Exercise
+              </button>
+            </div>
+            {logMode === "meal" ? (
+              <FoodLogger onAddMeal={handleAddMeal} />
+            ) : (
+              <ExerciseLogger
+                currentSteps={userStats.steps}
+                onUpdateSteps={handleUpdateSteps}
+                onAddWorkout={handleAddWorkout}
+              />
+            )}
+          </div>
+        )}
         {activeTab === "feed" && <SocialFeed session={session} />}
         {activeTab === "chat" && <Chat session={session} />}
         {activeTab === "profile" && (
@@ -340,3 +468,19 @@ export default function App() {
     </div>
   );
 }
+
+const logModeBtnStyle = (active) => ({
+  flex: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
+  padding: "9px",
+  border: active ? "1px solid var(--ember)" : "1px solid var(--line)",
+  backgroundColor: active ? "var(--ember-soft)" : "var(--card)",
+  color: active ? "var(--ember)" : "var(--ink-soft)",
+  borderRadius: "var(--radius-md)",
+  fontWeight: 600,
+  fontSize: "13px",
+  cursor: "pointer",
+});

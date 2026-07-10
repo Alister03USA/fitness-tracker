@@ -1,7 +1,14 @@
-import React from "react";
-import { Footprints, Flame, ChevronLeft, ChevronRight } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import {
+  Footprints,
+  Flame,
+  Activity,
+  Pencil,
+  Trash2,
+  CalendarDays,
+} from "lucide-react";
 import Card from "./ui/Card";
-import Nutrientring from "./ui/Nutrientring";
+import NutrientRing from "./ui/Nutrientring";
 
 const MACRO_META = [
   {
@@ -22,31 +29,33 @@ const MACRO_META = [
 export default function Dashboard({
   userStats,
   todayLogs = [],
-  selectedDate,
-  setSelectedDate,
+  todayWorkouts = [],
+  caloriesBurned = 0,
+  onUpdateSteps,
+  onDeleteWorkout,
+  onOpenHistory,
 }) {
-  const remaining = userStats.calorieGoal - userStats.caloriesConsumed;
+  // Exercise calories add back to the daily budget, matching how most
+  // macro trackers handle it: Goal − Food + Exercise = Remaining.
+  const remaining =
+    userStats.calorieGoal - userStats.caloriesConsumed + caloriesBurned;
   const stepPct = Math.min(
     Math.round((userStats.steps / userStats.stepGoal) * 100),
     100,
   );
 
-  const isToday = new Date().toDateString() === selectedDate.toDateString();
+  const [editingSteps, setEditingSteps] = useState(false);
+  const [stepsDraft, setStepsDraft] = useState(userStats.steps);
 
-  const handlePrevDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d);
-  };
+  useEffect(() => {
+    if (!editingSteps) setStepsDraft(userStats.steps);
+  }, [userStats.steps, editingSteps]);
 
-  const handleNextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d);
-  };
-
-  const handleToday = () => {
-    setSelectedDate(new Date());
+  const saveSteps = async () => {
+    if (stepsDraft !== "" && !isNaN(stepsDraft)) {
+      await onUpdateSteps?.(parseInt(stepsDraft));
+    }
+    setEditingSteps(false);
   };
 
   return (
@@ -58,18 +67,15 @@ export default function Dashboard({
         gap: "16px",
       }}
     >
-      {/* Calendar Header */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-start",
         }}
       >
         <div>
-          <h2 style={{ fontSize: "20px" }}>
-            {isToday ? "Today" : "Daily Log"}
-          </h2>
+          <h2 style={{ fontSize: "20px" }}>Today</h2>
           <p
             style={{
               color: "var(--ink-soft)",
@@ -77,45 +83,21 @@ export default function Dashboard({
               marginTop: "2px",
             }}
           >
-            {selectedDate.toLocaleDateString(undefined, {
+            {new Date().toLocaleDateString(undefined, {
               weekday: "long",
               month: "long",
               day: "numeric",
             })}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          {!isToday && (
-            <button
-              onClick={handleToday}
-              style={{
-                border: "none",
-                background: "none",
-                color: "var(--ember)",
-                fontSize: "13px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                marginRight: "8px",
-              }}
-            >
-              Today
-            </button>
-          )}
-          <button onClick={handlePrevDay} style={dateBtnStyle}>
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            onClick={handleNextDay}
-            style={{
-              ...dateBtnStyle,
-              opacity: isToday ? 0.3 : 1,
-              cursor: isToday ? "default" : "pointer",
-            }}
-            disabled={isToday}
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        <button
+          onClick={onOpenHistory}
+          style={historyBtnStyle}
+          aria-label="View food history"
+        >
+          <CalendarDays size={15} />
+          History
+        </button>
       </div>
 
       {/* Signature nutrient ring card */}
@@ -151,6 +133,23 @@ export default function Dashboard({
             },
           ]}
         />
+
+        {caloriesBurned > 0 && (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "var(--ink-soft)",
+              marginTop: "-8px",
+            }}
+          >
+            {userStats.calorieGoal.toLocaleString()} goal −{" "}
+            {userStats.caloriesConsumed.toLocaleString()} food{" "}
+            <span style={{ color: "var(--plum)", fontWeight: 600 }}>
+              + {caloriesBurned.toLocaleString()} exercise
+            </span>
+          </p>
+        )}
+
         <div style={{ display: "flex", gap: "8px", width: "100%" }}>
           {MACRO_META.map((m) => (
             <div
@@ -186,7 +185,7 @@ export default function Dashboard({
         </div>
       </Card>
 
-      {/* Steps card */}
+      {/* Steps card — tap the pencil to edit today's count inline */}
       <Card style={{ display: "flex", alignItems: "center", gap: "14px" }}>
         <div
           style={{
@@ -208,16 +207,47 @@ export default function Dashboard({
             style={{
               display: "flex",
               justifyContent: "space-between",
+              alignItems: "center",
               marginBottom: "4px",
             }}
           >
             <span style={{ fontSize: "13px", color: "var(--ink-soft)" }}>
               Steps
             </span>
-            <span className="stat-number" style={{ fontSize: "14px" }}>
-              {userStats.steps.toLocaleString()} /{" "}
-              {userStats.stepGoal.toLocaleString()}
-            </span>
+
+            {editingSteps ? (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <input
+                  type="number"
+                  autoFocus
+                  value={stepsDraft}
+                  onChange={(e) => setStepsDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && saveSteps()}
+                  style={stepsInputStyle}
+                />
+                <button
+                  onClick={saveSteps}
+                  style={smallSaveBtnStyle}
+                  aria-label="Save steps"
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingSteps(true)}
+                style={editTriggerStyle}
+                aria-label="Edit steps"
+              >
+                <span className="stat-number" style={{ fontSize: "14px" }}>
+                  {userStats.steps.toLocaleString()} /{" "}
+                  {userStats.stepGoal.toLocaleString()}
+                </span>
+                <Pencil size={12} color="var(--ink-faint)" />
+              </button>
+            )}
           </div>
           <div
             style={{
@@ -240,11 +270,72 @@ export default function Dashboard({
         </div>
       </Card>
 
+      {/* Today's exercise */}
+      {todayWorkouts.length > 0 && (
+        <div>
+          <h3 style={{ fontSize: "15px", marginBottom: "10px" }}>
+            Today's exercise
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {todayWorkouts.map((w) => (
+              <Card
+                key={w.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 16px",
+                }}
+              >
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <Activity size={16} color="var(--plum)" />
+                  <div>
+                    <span
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        display: "block",
+                      }}
+                    >
+                      {w.name}
+                    </span>
+                    {w.duration_minutes ? (
+                      <span
+                        style={{ fontSize: "11px", color: "var(--ink-faint)" }}
+                      >
+                        {w.duration_minutes} min
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <span
+                    className="stat-number"
+                    style={{ fontSize: "14px", color: "var(--plum)" }}
+                  >
+                    −{w.calories_burned} kcal
+                  </span>
+                  <button
+                    onClick={() => onDeleteWorkout?.(w.id)}
+                    style={deleteBtnStyle}
+                    aria-label="Delete workout"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Today's log */}
       <div>
-        <h3 style={{ fontSize: "15px", marginBottom: "10px" }}>
-          {isToday ? "Today's log" : "Meals logged"}
-        </h3>
+        <h3 style={{ fontSize: "15px", marginBottom: "10px" }}>Today's log</h3>
         {todayLogs.length === 0 ? (
           <Card
             style={{
@@ -253,7 +344,7 @@ export default function Dashboard({
               fontSize: "13px",
             }}
           >
-            Nothing logged for this day.
+            Nothing logged yet — tap the ＋ button below to add your first meal.
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -320,16 +411,55 @@ export default function Dashboard({
   );
 }
 
-// Inline Styles
-const dateBtnStyle = {
+const historyBtnStyle = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "center",
-  width: "32px",
-  height: "32px",
-  borderRadius: "var(--radius-full)",
-  border: "1px solid var(--line)",
+  gap: "5px",
+  padding: "6px 12px",
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "var(--ink-soft)",
   backgroundColor: "var(--card)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-full)",
   cursor: "pointer",
-  color: "var(--ink)",
+};
+
+const editTriggerStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: "2px",
+};
+
+const stepsInputStyle = {
+  width: "80px",
+  padding: "4px 8px",
+  fontSize: "13px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--ember)",
+  textAlign: "right",
+};
+
+const smallSaveBtnStyle = {
+  padding: "4px 10px",
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#fff",
+  backgroundColor: "var(--ember)",
+  border: "none",
+  borderRadius: "var(--radius-sm)",
+  cursor: "pointer",
+};
+
+const deleteBtnStyle = {
+  background: "none",
+  border: "none",
+  color: "var(--ink-faint)",
+  cursor: "pointer",
+  display: "flex",
+  padding: "2px",
 };
