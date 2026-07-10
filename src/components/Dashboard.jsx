@@ -1,7 +1,7 @@
 import React from "react";
 import { Footprints, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import Card from "./ui/Card";
-import NutrientRing from "./ui/Nutrientring";
+import Nutrientring from "./ui/Nutrientring";
 
 const MACRO_META = [
   {
