@@ -1,7 +1,7 @@
 import React from "react";
-import { Footprints, Flame } from "lucide-react";
+import { Footprints, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import Card from "./ui/Card";
-import NutrientRing from "./ui/Nutrientring";
+import NutrientRing from "./ui/NutrientRing";
 
 const MACRO_META = [
   {
@@ -19,12 +19,35 @@ const MACRO_META = [
   { key: "fat", label: "Fat", color: "var(--plum)", bg: "var(--plum-soft)" },
 ];
 
-export default function Dashboard({ userStats, todayLogs = [] }) {
+export default function Dashboard({
+  userStats,
+  todayLogs = [],
+  selectedDate,
+  setSelectedDate,
+}) {
   const remaining = userStats.calorieGoal - userStats.caloriesConsumed;
   const stepPct = Math.min(
     Math.round((userStats.steps / userStats.stepGoal) * 100),
     100,
   );
+
+  const isToday = new Date().toDateString() === selectedDate.toDateString();
+
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+  };
+
+  const handleNextDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d);
+  };
+
+  const handleToday = () => {
+    setSelectedDate(new Date());
+  };
 
   return (
     <div
@@ -35,21 +58,64 @@ export default function Dashboard({ userStats, todayLogs = [] }) {
         gap: "16px",
       }}
     >
-      <div>
-        <h2 style={{ fontSize: "20px" }}>Today</h2>
-        <p
-          style={{
-            color: "var(--ink-soft)",
-            fontSize: "13px",
-            marginTop: "2px",
-          }}
-        >
-          {new Date().toLocaleDateString(undefined, {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
-        </p>
+      {/* Calendar Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: "20px" }}>
+            {isToday ? "Today" : "Daily Log"}
+          </h2>
+          <p
+            style={{
+              color: "var(--ink-soft)",
+              fontSize: "13px",
+              marginTop: "2px",
+            }}
+          >
+            {selectedDate.toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          {!isToday && (
+            <button
+              onClick={handleToday}
+              style={{
+                border: "none",
+                background: "none",
+                color: "var(--ember)",
+                fontSize: "13px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                marginRight: "8px",
+              }}
+            >
+              Today
+            </button>
+          )}
+          <button onClick={handlePrevDay} style={dateBtnStyle}>
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            onClick={handleNextDay}
+            style={{
+              ...dateBtnStyle,
+              opacity: isToday ? 0.3 : 1,
+              cursor: isToday ? "default" : "pointer",
+            }}
+            disabled={isToday}
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Signature nutrient ring card */}
@@ -85,7 +151,6 @@ export default function Dashboard({ userStats, todayLogs = [] }) {
             },
           ]}
         />
-
         <div style={{ display: "flex", gap: "8px", width: "100%" }}>
           {MACRO_META.map((m) => (
             <div
@@ -177,7 +242,9 @@ export default function Dashboard({ userStats, todayLogs = [] }) {
 
       {/* Today's log */}
       <div>
-        <h3 style={{ fontSize: "15px", marginBottom: "10px" }}>Today's log</h3>
+        <h3 style={{ fontSize: "15px", marginBottom: "10px" }}>
+          {isToday ? "Today's log" : "Meals logged"}
+        </h3>
         {todayLogs.length === 0 ? (
           <Card
             style={{
@@ -186,7 +253,7 @@ export default function Dashboard({ userStats, todayLogs = [] }) {
               fontSize: "13px",
             }}
           >
-            Nothing logged yet — tap the ＋ button below to add your first meal.
+            Nothing logged for this day.
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -252,3 +319,17 @@ export default function Dashboard({ userStats, todayLogs = [] }) {
     </div>
   );
 }
+
+// Inline Styles
+const dateBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "32px",
+  height: "32px",
+  borderRadius: "var(--radius-full)",
+  border: "1px solid var(--line)",
+  backgroundColor: "var(--card)",
+  cursor: "pointer",
+  color: "var(--ink)",
+};

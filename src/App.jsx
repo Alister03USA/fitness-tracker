@@ -28,14 +28,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [avatarUrl, setAvatarUrl] = useState("");
+  
+  // NEW: State to track the calendar day being viewed
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const [userStats, setUserStats] = useState({
     stepGoal: 10000,
     steps: 7420,
     calorieGoal: 2200,
     caloriesConsumed: 0,
-    // Standard macro split (30% protein / 40% carbs / 30% fat) derived from
-    // the calorie goal, expressed in grams (protein/carbs = 4 kcal/g, fat = 9 kcal/g)
     proteinGoal: Math.round((2200 * 0.3) / 4),
     carbsGoal: Math.round((2200 * 0.4) / 4),
     fatGoal: Math.round((2200 * 0.3) / 9),
@@ -75,14 +76,14 @@ export default function App() {
     };
   }, []);
 
-  // Filter logs explicitly for the current calendar day to reset stats at midnight
-  const fetchTodayLogs = useCallback(async () => {
+  // UPDATED: Dynamically filter logs based on selectedDate
+  const fetchLogsForDate = useCallback(async () => {
     if (!session?.user?.id) return;
 
-    const startOfDay = new Date();
+    const startOfDay = new Date(selectedDate);
     startOfDay.setHours(0, 0, 0, 0);
 
-    const endOfDay = new Date();
+    const endOfDay = new Date(selectedDate);
     endOfDay.setHours(23, 59, 59, 999);
 
     const { data, error } = await supabase
@@ -113,13 +114,14 @@ export default function App() {
       }));
       setTodayLogs(data);
     }
-  }, [session]);
+  }, [session, selectedDate]);
 
+  // Refetch automatically if the date changes
   useEffect(() => {
     if (session) {
-      fetchTodayLogs();
+      fetchLogsForDate();
     }
-  }, [session, fetchTodayLogs]);
+  }, [session, fetchLogsForDate]);
 
   const handleAddMeal = useCallback(
     async (meal) => {
@@ -142,11 +144,13 @@ export default function App() {
       if (error) {
         alert("Failed to save log to database: " + error.message);
       } else {
-        fetchTodayLogs();
+        // Automatically jump back to Today to see the new entry
+        setSelectedDate(new Date()); 
+        fetchLogsForDate();
         setActiveTab("dashboard");
       }
     },
-    [session, fetchTodayLogs],
+    [session, fetchLogsForDate],
   );
 
   if (loading) {
@@ -242,7 +246,12 @@ export default function App() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {activeTab === "dashboard" && (
-          <Dashboard userStats={userStats} todayLogs={todayLogs} />
+          <Dashboard 
+            userStats={userStats} 
+            todayLogs={todayLogs} 
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+          />
         )}
         {activeTab === "log" && <FoodLogger onAddMeal={handleAddMeal} />}
         {activeTab === "feed" && <SocialFeed session={session} />}
