@@ -7,7 +7,7 @@ import React from "react";
  * rings: [{ label, color, consumed, goal }] - outer to inner order in the array
  * centerLabel / centerValue: the big number shown in the middle (usually calories remaining)
  */
-export default function NutrientRing({
+export default function Nutrientring({
   rings,
   centerValue,
   centerLabel,
@@ -29,10 +29,7 @@ export default function NutrientRing({
         {rings.map((ring, i) => {
           const r = cx - strokeWidth / 2 - i * (strokeWidth + gap);
           const circumference = 2 * Math.PI * r;
-          const pct = Math.min(
-            ring.goal ? ring.consumed / ring.goal : 0,
-            1,
-          );
+          const pct = Math.min(ring.goal ? ring.consumed / ring.goal : 0, 1);
           return (
             <g key={ring.label}>
               <circle
@@ -71,7 +68,10 @@ export default function NutrientRing({
           justifyContent: "center",
         }}
       >
-        <span className="stat-number" style={{ fontSize: "28px", lineHeight: 1 }}>
+        <span
+          className="stat-number"
+          style={{ fontSize: "28px", lineHeight: 1 }}
+        >
           {centerValue}
         </span>
         <span
