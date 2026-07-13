@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Camera, Flame, Lock } from "lucide-react";
+import { Camera, Flame, Lock, KeyRound } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
@@ -18,6 +18,10 @@ export default function Profile({ session, onUpdateGoals }) {
 
   const [bmr, setBmr] = useState(0);
   const [tdeeGoal, setTdeeGoal] = useState(2000);
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     if (session) {
@@ -146,6 +150,39 @@ export default function Profile({ session, onUpdateGoals }) {
       alert("Error updating profile: " + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const validatePassword = (password) => {
+    const re =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+    return re.test(password);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+
+    if (!validatePassword(newPassword)) {
+      alert(
+        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one special character.",
+      );
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert("Passwords don't match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setChangingPassword(false);
+
+    if (error) {
+      alert("Failed to update password: " + error.message);
+    } else {
+      alert("Password updated!");
+      setNewPassword("");
+      setConfirmPassword("");
     }
   };
 
@@ -377,6 +414,52 @@ export default function Profile({ session, onUpdateGoals }) {
 
           <Button type="submit" fullWidth>
             Save profile
+          </Button>
+        </form>
+      </Card>
+
+      {/* Change password */}
+      <Card>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "12px",
+          }}
+        >
+          <KeyRound size={18} color="var(--ink-soft)" />
+          <h3 style={{ fontSize: "15px" }}>Change password</h3>
+        </div>
+        <form
+          onSubmit={handleChangePassword}
+          style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+        >
+          <Field label="New password">
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Secure password"
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Confirm new password">
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter password"
+              style={inputStyle}
+            />
+          </Field>
+          <Button
+            type="submit"
+            variant="secondary"
+            fullWidth
+            disabled={changingPassword}
+          >
+            {changingPassword ? "Updating..." : "Update password"}
           </Button>
         </form>
       </Card>

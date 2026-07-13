@@ -8,6 +8,11 @@ export default function Auth() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
   // Step 1 State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -90,6 +95,98 @@ export default function Auth() {
     setIsSigningUp(!isSigningUp);
     setStep(1);
   };
+
+  const handleSendResetLink = async (e) => {
+    e.preventDefault();
+    setResetLoading(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setResetSent(true);
+    }
+    setResetLoading(false);
+  };
+
+  const backToSignIn = () => {
+    setShowForgotPassword(false);
+    setResetSent(false);
+    setResetEmail("");
+  };
+
+  if (showForgotPassword) {
+    return (
+      <div
+        style={{
+          minHeight: "100svh",
+          backgroundColor: "var(--paper)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "20px",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: "380px" }}>
+          <div style={{ textAlign: "center", marginBottom: "20px" }}>
+            <h2
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "26px",
+                marginBottom: "6px",
+              }}
+            >
+              Reset your password
+            </h2>
+            <p style={{ color: "var(--ink-soft)", fontSize: "14px" }}>
+              {resetSent
+                ? "Check your inbox for a reset link."
+                : "We'll email you a link to set a new password."}
+            </p>
+          </div>
+
+          <Card>
+            {resetSent ? (
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <p style={{ fontSize: "14px", color: "var(--ink)", marginBottom: "16px" }}>
+                  Sent to <strong>{resetEmail}</strong>. Click the link in that email — it'll
+                  bring you back here to set a new password.
+                </p>
+                <Button variant="secondary" fullWidth onClick={backToSignIn}>
+                  Back to sign in
+                </Button>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSendResetLink}
+                style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+              >
+                <Field label="Email">
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    style={inputStyle}
+                    required
+                  />
+                </Field>
+                <Button type="submit" fullWidth disabled={resetLoading}>
+                  {resetLoading ? "Sending..." : "Send reset link"}
+                </Button>
+                <Button type="button" variant="ghost" fullWidth onClick={backToSignIn}>
+                  Back to sign in
+                </Button>
+              </form>
+            )}
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -245,11 +342,22 @@ export default function Auth() {
           </form>
         </Card>
 
+        {!isSigningUp && (
+          <Button
+            variant="ghost"
+            fullWidth
+            onClick={() => setShowForgotPassword(true)}
+            style={{ marginTop: "10px" }}
+          >
+            Forgot password?
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           fullWidth
           onClick={resetMode}
-          style={{ marginTop: "14px" }}
+          style={{ marginTop: "4px" }}
         >
           {isSigningUp
             ? "Already have an account? Sign in"

@@ -1,15 +1,13 @@
 import React, { useState } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
   Camera,
   Image as ImageIcon,
   Sparkles,
   ChevronDown,
 } from "lucide-react";
+import { analyzeFoodPhoto } from "../lib/logmeal";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
-
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
 export default function FoodLogger({ onAddMeal }) {
   const [foodName, setFoodName] = useState("");
@@ -41,51 +39,13 @@ export default function FoodLogger({ onAddMeal }) {
     }
   };
 
-  const fileToGenerativePart = async (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64Data = reader.result.split(",")[1];
-        resolve({
-          inlineData: {
-            data: base64Data,
-            mimeType: file.type,
-          },
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleAnalyzePhoto = async () => {
     if (!imageFile) return;
     setIsAnalyzing(true);
     setErrorMsg("");
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const imagePart = await fileToGenerativePart(imageFile);
-
-      const prompt = `
-        Analyze this food image. Identify the meal and estimate its total calories, macronutrients, and key micronutrients.
-        Respond STRICTLY in JSON format without markdown wrapping, matching this exact schema:
-        {
-          "foodName": "Name of dish",
-          "calories": 500,
-          "proteinGrams": 30,
-          "carbsGrams": 45,
-          "fatGrams": 15,
-          "fiberGrams": 6,
-          "sugarGrams": 5,
-          "sodiumMg": 450
-        }
-      `;
-
-      const result = await model.generateContent([prompt, imagePart]);
-      const responseText = result.response.text();
-
-      const cleanJson = responseText.replace(/```json|```/g, "").trim();
-      const data = JSON.parse(cleanJson);
+      const data = await analyzeFoodPhoto(imageFile);
 
       setFoodName(data.foodName || "Unrecognized Dish");
       setCalories(data.calories || 0);
@@ -167,7 +127,8 @@ export default function FoodLogger({ onAddMeal }) {
             marginBottom: "14px",
           }}
         >
-          Snap a photo and Gemini fills in calories and nutrients for you.
+          Snap a photo and LogMeal's food AI fills in calories and nutrients for
+          you.
         </p>
 
         <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
@@ -222,9 +183,7 @@ export default function FoodLogger({ onAddMeal }) {
               disabled={isAnalyzing}
             >
               <Sparkles size={16} />
-              {isAnalyzing
-                ? "Analyzing nutrients..."
-                : "Analyze with Gemini AI"}
+              {isAnalyzing ? "Analyzing photo..." : "Analyze with Food AI"}
             </Button>
           </div>
         )}

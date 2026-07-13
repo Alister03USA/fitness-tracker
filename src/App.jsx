@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import Auth from "./components/Auth";
+import ResetPasswordScreen from "./components/ResetPasswordScreen";
 import Dashboard from "./components/Dashboard";
 import FoodLogger from "./components/FoodLogger";
 import ExerciseLogger from "./components/ExerciseLogger";
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [logMode, setLogMode] = useState("meal"); // "meal" | "exercise"
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -81,6 +83,9 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setLoading(false);
+      if (_event === "PASSWORD_RECOVERY") {
+        setIsPasswordRecovery(true);
+      }
     });
 
     return () => {
@@ -260,6 +265,10 @@ export default function App() {
         Loading Fitness Tracker...
       </div>
     );
+  }
+
+  if (isPasswordRecovery) {
+    return <ResetPasswordScreen onDone={() => setIsPasswordRecovery(false)} />;
   }
 
   if (!session) {
