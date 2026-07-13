@@ -15,7 +15,7 @@ import { showToast } from "./lib/toast";
 import Auth from "./components/Auth";
 import ResetPasswordScreen from "./components/ResetPasswordScreen";
 import ToastHost from "./components/ui/Toasthost";
-import ConfirmHost from "./components/ui/ConfirmHost";
+import ConfirmHost from "./components/ui/Confirmhost";
 import Dashboard from "./components/Dashboard";
 import FoodLogger from "./components/FoodLogger";
 import ExerciseLogger from "./components/ExerciseLogger";
