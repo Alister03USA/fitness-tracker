@@ -18,6 +18,8 @@ import {
   UserMinus,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast.js";
+import { confirmDialog } from "../lib/confirmDialog.js";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
@@ -231,7 +233,7 @@ export default function Chat({ session }) {
       setActiveGroup({ ...activeGroup, avatar_url: data.publicUrl });
       fetchGroups();
     } catch (error) {
-      alert("Failed to upload group photo: " + error.message);
+      showToast("Failed to upload group photo: " + error.message, "error");
     } finally {
       setUploading(false);
     }
@@ -288,7 +290,7 @@ export default function Chat({ session }) {
             message: `requested to join your group "${group.name}".`,
           },
         ]);
-        alert("Join request sent to admin!");
+        showToast("Join request sent to admin!", "success");
       } else {
         // Notify Existing Members (New user joined public group)
         const { data: members } = await supabase
@@ -306,7 +308,7 @@ export default function Chat({ session }) {
           }));
           await supabase.from("notifications").insert(notifs);
         }
-        alert("Joined group successfully!");
+        showToast("Joined group successfully!", "success");
       }
       fetchGroups();
     }
@@ -360,9 +362,66 @@ export default function Chat({ session }) {
   };
 
   const handleKickMember = async (member) => {
-    if (!window.confirm(`Kick ${member.profiles.name} from the group?`)) return;
+    const confirmed = await confirmDialog({
+      title: "Kick member?",
+      message: `${member.profiles.name} will be removed from the group.`,
+      confirmLabel: "Kick",
+      danger: true,
+    });
+    if (!confirmed) return;
     await supabase.from("group_members").delete().eq("id", member.id);
     fetchGroupAdminData();
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!activeGroup) return;
+    const confirmed = await confirmDialog({
+      title: "Leave group?",
+      message: `You'll need to rejoin or be re-added to see "${activeGroup.name}" again.`,
+      confirmLabel: "Leave",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("group_members")
+      .delete()
+      .eq("group_id", activeGroup.id)
+      .eq("user_id", userId);
+
+    if (error) {
+      showToast("Failed to leave group: " + error.message, "error");
+      return;
+    }
+
+    setActiveGroup(null);
+    setShowGroupInfo(false);
+    fetchGroups();
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!activeGroup) return;
+    const confirmed = await confirmDialog({
+      title: "Delete group?",
+      message: `"${activeGroup.name}" and all its messages will be permanently removed for everyone. This can't be undone.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("groups")
+      .delete()
+      .eq("id", activeGroup.id);
+
+    if (error) {
+      showToast("Failed to delete group: " + error.message, "error");
+      return;
+    }
+
+    setActiveGroup(null);
+    setShowGroupInfo(false);
+    fetchGroups();
   };
 
   const handleAddFriendToGroup = async (friendId, friendName) => {
@@ -401,10 +460,10 @@ export default function Chat({ session }) {
         }));
         await supabase.from("notifications").insert(memberNotifs);
       }
-      alert(`${friendName} added to the group!`);
+      showToast(`${friendName} added to the group!`, "success");
       fetchGroupAdminData();
     } else {
-      alert("They might already be in the group or invited.");
+      showToast("They might already be in the group or invited.", "error");
     }
   };
 
@@ -443,16 +502,14 @@ export default function Chat({ session }) {
 
       if (activeChat) {
         // Send Direct Message
-        await supabase
-          .from("messages")
-          .insert([
-            {
-              sender_id: userId,
-              receiver_id: activeChat.id,
-              content,
-              image_url: imageUrl,
-            },
-          ]);
+        await supabase.from("messages").insert([
+          {
+            sender_id: userId,
+            receiver_id: activeChat.id,
+            content,
+            image_url: imageUrl,
+          },
+        ]);
         await supabase.from("notifications").insert([
           {
             user_id: activeChat.id,
@@ -465,16 +522,14 @@ export default function Chat({ session }) {
         ]);
       } else if (activeGroup) {
         // Send Group Message
-        await supabase
-          .from("group_messages")
-          .insert([
-            {
-              group_id: activeGroup.id,
-              sender_id: userId,
-              content,
-              image_url: imageUrl,
-            },
-          ]);
+        await supabase.from("group_messages").insert([
+          {
+            group_id: activeGroup.id,
+            sender_id: userId,
+            content,
+            image_url: imageUrl,
+          },
+        ]);
 
         // Notify Group Members
         const { data: members } = await supabase
@@ -500,7 +555,7 @@ export default function Chat({ session }) {
       setPendingImage(null);
       scrollToBottom();
     } catch (err) {
-      alert("Failed to send message: " + err.message);
+      showToast("Failed to send message: " + err.message, "error");
     } finally {
       setUploading(false);
     }
@@ -536,7 +591,12 @@ export default function Chat({ session }) {
   };
 
   const handleDeleteMessage = async (messageId) => {
-    if (!window.confirm("Delete this message?")) return;
+    const confirmed = await confirmDialog({
+      title: "Delete message?",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
     const table = activeChat ? "messages" : "group_messages";
     await supabase.from(table).delete().eq("id", messageId);
   };
@@ -758,19 +818,34 @@ export default function Chat({ session }) {
                       paddingBottom: "4px",
                     }}
                   >
-                    {friends.map((friend) => (
-                      <Button
-                        key={friend.id}
-                        size="sm"
-                        variant="secondary"
-                        onClick={() =>
-                          handleAddFriendToGroup(friend.id, friend.name)
-                        }
-                        style={{ whiteSpace: "nowrap" }}
+                    {friends
+                      .filter(
+                        (friend) =>
+                          !groupMembers.some((m) => m.user_id === friend.id),
+                      )
+                      .map((friend) => (
+                        <Button
+                          key={friend.id}
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            handleAddFriendToGroup(friend.id, friend.name)
+                          }
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          <UserPlus size={14} /> {friend.name}
+                        </Button>
+                      ))}
+                    {friends.filter(
+                      (friend) =>
+                        !groupMembers.some((m) => m.user_id === friend.id),
+                    ).length === 0 && (
+                      <span
+                        style={{ fontSize: "12px", color: "var(--ink-soft)" }}
                       >
-                        <UserPlus size={14} /> {friend.name}
-                      </Button>
-                    ))}
+                        All your friends are already in this group.
+                      </span>
+                    )}
                   </div>
                 </div>
               </>
@@ -832,6 +907,35 @@ export default function Chat({ session }) {
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* Leave / Delete — every group needs a way out */}
+            <div
+              style={{
+                marginTop: "16px",
+                paddingTop: "16px",
+                borderTop: "1px solid var(--line)",
+              }}
+            >
+              {isGroupAdmin ? (
+                <Button
+                  variant="danger"
+                  fullWidth
+                  size="sm"
+                  onClick={handleDeleteGroup}
+                >
+                  <Trash2 size={14} /> Delete group
+                </Button>
+              ) : (
+                <Button
+                  variant="danger"
+                  fullWidth
+                  size="sm"
+                  onClick={handleLeaveGroup}
+                >
+                  <ArrowLeft size={14} /> Leave group
+                </Button>
+              )}
             </div>
           </div>
         )}

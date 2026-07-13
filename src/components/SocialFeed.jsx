@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirmDialog.js";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
@@ -20,7 +22,7 @@ const SUB_TABS = [
   { key: "notifications", label: "Alerts", icon: Bell },
 ];
 
-export default function SocialFeed({ session }) {
+export default function SocialFeed({ session, jumpToNotifications }) {
   const [activeSubTab, setActiveSubTab] = useState("feed");
   const [posts, setPosts] = useState([]);
   const [caption, setCaption] = useState("");
@@ -163,7 +165,7 @@ export default function SocialFeed({ session }) {
     ]);
 
     if (friendErr) {
-      alert("Request error: " + friendErr.message);
+      showToast("Request error: " + friendErr.message, "error");
     } else {
       await supabase.from("notifications").insert([
         {
@@ -210,19 +212,25 @@ export default function SocialFeed({ session }) {
       setImageFile(null);
       fetchPosts();
     } catch (err) {
-      alert("Post error: " + err.message);
+      showToast("Post error: " + err.message, "error");
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeletePost = async (postId) => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
+    const confirmed = await confirmDialog({
+      title: "Delete post?",
+      message: "This post and its comments/likes will be permanently removed.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
 
     const { error } = await supabase.from("posts").delete().eq("id", postId);
 
     if (error) {
-      alert("Error deleting post: " + error.message);
+      showToast("Error deleting post: " + error.message, "error");
     } else {
       fetchPosts();
     }
@@ -260,6 +268,13 @@ export default function SocialFeed({ session }) {
       setUnreadCount(0);
     }
   };
+
+  useEffect(() => {
+    if (jumpToNotifications) {
+      markNotificationsRead();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToNotifications]);
 
   const handleToggleLike = async (post) => {
     const existingLike = post.post_likes?.find((l) => l.user_id === userId);

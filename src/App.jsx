@@ -8,10 +8,14 @@ import {
   LogOut,
   UtensilsCrossed,
   Activity,
+  Bell,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { showToast } from "./lib/toast";
 import Auth from "./components/Auth";
 import ResetPasswordScreen from "./components/ResetPasswordScreen";
+import ToastHost from "./components/ui/Toasthost";
+import ConfirmHost from "./components/ui/ConfirmHost";
 import Dashboard from "./components/Dashboard";
 import FoodLogger from "./components/FoodLogger";
 import ExerciseLogger from "./components/ExerciseLogger";
@@ -35,6 +39,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [logMode, setLogMode] = useState("meal"); // "meal" | "exercise"
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [notifTrigger, setNotifTrigger] = useState(0);
 
   const [userStats, setUserStats] = useState({
     stepGoal: 10000,
@@ -160,6 +166,130 @@ export default function App() {
     }
   }, [session, fetchTodayLogs, fetchTodaySteps, fetchTodayWorkouts]);
 
+  // Notification bell — lives at the App level (not inside SocialFeed) so the
+  // unread badge and a toast for new activity show up no matter which tab
+  // you're on, instead of being hidden until you happen to open Feed.
+  const fetchUnreadNotifCount = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", session.user.id)
+      .eq("is_read", false);
+
+    setUnreadNotifCount(count || 0);
+  }, [session]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    fetchUnreadNotifCount();
+
+    const channel = supabase
+      .channel("app-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        async (payload) => {
+          setUnreadNotifCount((prev) => prev + 1);
+
+          const { data } = await supabase
+            .from("notifications")
+            .select("message, actor:profiles!notifications_actor_id_fkey(name)")
+            .eq("id", payload.new.id)
+            .single();
+
+          showToast(
+            `${data?.actor?.name || "Someone"} ${data?.message || "sent you a notification."}`,
+            "info",
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session, fetchUnreadNotifCount]);
+
+  const handleOpenNotifications = () => {
+    setActiveTab("feed");
+    setNotifTrigger((prev) => prev + 1);
+    setUnreadNotifCount(0);
+  };
+
+  // --- Daily reminder ---------------------------------------------------
+  // IMPORTANT LIMITATION: this only fires while the app is open in a
+  // browser tab (foreground or background). There is no backend here to
+  // push a notification if the app/browser is fully closed — that needs a
+  // service worker + Web Push subscription + a server-side scheduler
+  // (see README for the full path). This is the honest, "works right now
+  // with no new infrastructure" version: a client-side clock check.
+  const [reminderSettings, setReminderSettings] = useState({
+    reminder_time: "18:00",
+    enabled: true,
+  });
+
+  const handleUpdateReminder = (reminderTime, enabled) => {
+    setReminderSettings({ reminder_time: reminderTime, enabled });
+  };
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    supabase
+      .from("reminder_settings")
+      .select("reminder_time, enabled")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setReminderSettings({
+            reminder_time: data.reminder_time?.slice(0, 5) || "18:00",
+            enabled: data.enabled,
+          });
+        }
+      });
+  }, [session]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !reminderSettings.enabled) return;
+
+    const checkReminder = () => {
+      const now = new Date();
+      const nowHHMM = now.toTimeString().slice(0, 5);
+      const todayStr = todayDateString();
+      const lastFired = localStorage.getItem("reminderLastFiredDate");
+
+      if (
+        nowHHMM === reminderSettings.reminder_time &&
+        lastFired !== todayStr
+      ) {
+        localStorage.setItem("reminderLastFiredDate", todayStr);
+        showToast("Time to log your meals and activity for today!", "info");
+
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
+          new Notification("Fitness Tracker", {
+            body: "Time to log your meals and activity for today!",
+          });
+        }
+      }
+    };
+
+    checkReminder();
+    const interval = setInterval(checkReminder, 30000);
+    return () => clearInterval(interval);
+  }, [session, reminderSettings]);
+
   const handleUpdateSteps = useCallback(
     async (newSteps) => {
       if (!session?.user?.id) return;
@@ -176,7 +306,7 @@ export default function App() {
       );
 
       if (error) {
-        alert("Failed to save steps: " + error.message);
+        showToast("Failed to save steps: " + error.message, "error");
       } else {
         setUserStats((prev) => ({ ...prev, steps: newSteps }));
       }
@@ -200,7 +330,7 @@ export default function App() {
       ]);
 
       if (error) {
-        alert("Failed to save workout: " + error.message);
+        showToast("Failed to save workout: " + error.message, "error");
       } else {
         await fetchTodayWorkouts();
         setActiveTab("dashboard");
@@ -211,9 +341,12 @@ export default function App() {
 
   const handleDeleteWorkout = useCallback(
     async (workoutId) => {
-      const { error } = await supabase.from("workouts").delete().eq("id", workoutId);
+      const { error } = await supabase
+        .from("workouts")
+        .delete()
+        .eq("id", workoutId);
       if (error) {
-        alert("Failed to delete workout: " + error.message);
+        showToast("Failed to delete workout: " + error.message, "error");
       } else {
         fetchTodayWorkouts();
       }
@@ -221,7 +354,10 @@ export default function App() {
     [fetchTodayWorkouts],
   );
 
-  const caloriesBurned = todayWorkouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
+  const caloriesBurned = todayWorkouts.reduce(
+    (sum, w) => sum + (w.calories_burned || 0),
+    0,
+  );
 
   const handleAddMeal = useCallback(
     async (meal) => {
@@ -243,7 +379,7 @@ export default function App() {
       ]);
 
       if (error) {
-        alert("Failed to save log to database: " + error.message);
+        showToast("Failed to save log to database: " + error.message, "error");
       } else {
         fetchTodayLogs();
         setActiveTab("dashboard");
@@ -254,25 +390,41 @@ export default function App() {
 
   if (loading) {
     return (
-      <div
-        style={{
-          padding: "40px",
-          textAlign: "center",
-          fontFamily: "var(--font-body)",
-          color: "var(--ink-soft)",
-        }}
-      >
-        Loading Fitness Tracker...
-      </div>
+      <>
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            fontFamily: "var(--font-body)",
+            color: "var(--ink-soft)",
+          }}
+        >
+          Loading Fitness Tracker...
+        </div>
+        <ToastHost />
+        <ConfirmHost />
+      </>
     );
   }
 
   if (isPasswordRecovery) {
-    return <ResetPasswordScreen onDone={() => setIsPasswordRecovery(false)} />;
+    return (
+      <>
+        <ResetPasswordScreen onDone={() => setIsPasswordRecovery(false)} />
+        <ToastHost />
+        <ConfirmHost />
+      </>
+    );
   }
 
   if (!session) {
-    return <Auth />;
+    return (
+      <>
+        <Auth />
+        <ToastHost />
+        <ConfirmHost />
+      </>
+    );
   }
 
   return (
@@ -326,26 +478,77 @@ export default function App() {
           )}
           <h1 style={{ fontSize: "17px" }}>Fitness Tracker</h1>
         </div>
-        <button
-          onClick={() => supabase.auth.signOut()}
-          aria-label="Sign out"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "8px 12px",
-            backgroundColor: "transparent",
-            color: "var(--ink-soft)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-full)",
-            cursor: "pointer",
-            fontSize: "13px",
-          }}
-        >
-          <LogOut size={14} />
-          Sign out
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            onClick={handleOpenNotifications}
+            aria-label={`Notifications${unreadNotifCount > 0 ? ` (${unreadNotifCount} unread)` : ""}`}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "36px",
+              height: "36px",
+              backgroundColor: "transparent",
+              color: "var(--ink)",
+              border: "1px solid var(--line)",
+              borderRadius: "50%",
+              cursor: "pointer",
+            }}
+          >
+            <Bell size={16} />
+            {unreadNotifCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: "-3px",
+                  right: "-3px",
+                  minWidth: "17px",
+                  height: "17px",
+                  padding: "0 4px",
+                  borderRadius: "999px",
+                  backgroundColor: "var(--ember)",
+                  color: "#fff",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "2px solid var(--paper)",
+                  animation: "bell-pulse 1.8s ease-in-out infinite",
+                }}
+              >
+                {unreadNotifCount > 9 ? "9+" : unreadNotifCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            aria-label="Sign out"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 12px",
+              backgroundColor: "transparent",
+              color: "var(--ink-soft)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--radius-full)",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            <LogOut size={14} />
+            Sign out
+          </button>
+        </div>
       </header>
+      <style>{`
+        @keyframes bell-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.15); }
+        }
+      `}</style>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {activeTab === "dashboard" && (
@@ -360,11 +563,16 @@ export default function App() {
           />
         )}
         {activeTab === "history" && (
-          <FoodHistory session={session} onBack={() => setActiveTab("dashboard")} />
+          <FoodHistory
+            session={session}
+            onBack={() => setActiveTab("dashboard")}
+          />
         )}
         {activeTab === "log" && (
           <div>
-            <div style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}>
+            <div
+              style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}
+            >
               <button
                 onClick={() => setLogMode("meal")}
                 style={logModeBtnStyle(logMode === "meal")}
@@ -391,10 +599,16 @@ export default function App() {
             )}
           </div>
         )}
-        {activeTab === "feed" && <SocialFeed session={session} />}
+        {activeTab === "feed" && (
+          <SocialFeed session={session} jumpToNotifications={notifTrigger} />
+        )}
         {activeTab === "chat" && <Chat session={session} />}
         {activeTab === "profile" && (
-          <Profile session={session} onUpdateGoals={handleUpdateGoals} />
+          <Profile
+            session={session}
+            onUpdateGoals={handleUpdateGoals}
+            onUpdateReminder={handleUpdateReminder}
+          />
         )}
       </div>
 
@@ -474,6 +688,8 @@ export default function App() {
           );
         })}
       </nav>
+      <ToastHost />
+      <ConfirmHost />
     </div>
   );
 }

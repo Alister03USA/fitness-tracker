@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Camera, Flame, Lock, KeyRound } from "lucide-react";
+import { Camera, Flame, Lock, KeyRound, BellRing } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
-export default function Profile({ session, onUpdateGoals }) {
+export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [name, setName] = useState("");
@@ -22,6 +23,15 @@ export default function Profile({ session, onUpdateGoals }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const [reminderTime, setReminderTime] = useState("18:00");
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [savingReminder, setSavingReminder] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined"
+      ? Notification.permission
+      : "unsupported",
+  );
 
   useEffect(() => {
     if (session) {
@@ -59,6 +69,17 @@ export default function Profile({ session, onUpdateGoals }) {
         setActivityLevel(data.activity_level || "1.375");
         setPrivacySetting(data.privacy_setting || "private");
         setAvatarUrl(data.avatar_url || "");
+      }
+
+      const { data: reminderData } = await supabase
+        .from("reminder_settings")
+        .select("reminder_time, enabled")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (reminderData) {
+        setReminderTime(reminderData.reminder_time?.slice(0, 5) || "18:00");
+        setReminderEnabled(reminderData.enabled);
       }
     } catch (error) {
       console.error("Error loading profile:", error.message);
@@ -112,7 +133,7 @@ export default function Profile({ session, onUpdateGoals }) {
       setAvatarUrl(data.publicUrl);
     } catch (error) {
       console.error("Avatar upload failed:", error);
-      alert("Error uploading avatar: " + error.message);
+      showToast("Error uploading avatar: " + error.message, "error");
     } finally {
       setUploading(false);
     }
@@ -145,9 +166,9 @@ export default function Profile({ session, onUpdateGoals }) {
         onUpdateGoals(tdeeGoal, avatarUrl);
       }
 
-      alert("Profile updated!");
+      showToast("Profile updated!", "success");
     } catch (error) {
-      alert("Error updating profile: " + error.message);
+      showToast("Error updating profile: " + error.message, "error");
     } finally {
       setLoading(false);
     }
@@ -163,13 +184,14 @@ export default function Profile({ session, onUpdateGoals }) {
     e.preventDefault();
 
     if (!validatePassword(newPassword)) {
-      alert(
+      showToast(
         "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one special character.",
+        "error",
       );
       return;
     }
     if (newPassword !== confirmPassword) {
-      alert("Passwords don't match.");
+      showToast("Passwords don't match.", "error");
       return;
     }
 
@@ -178,11 +200,49 @@ export default function Profile({ session, onUpdateGoals }) {
     setChangingPassword(false);
 
     if (error) {
-      alert("Failed to update password: " + error.message);
+      showToast("Failed to update password: " + error.message, "error");
     } else {
-      alert("Password updated!");
+      showToast("Password updated!", "success");
       setNewPassword("");
       setConfirmPassword("");
+    }
+  };
+
+  const handleSaveReminder = async (e) => {
+    e.preventDefault();
+    setSavingReminder(true);
+
+    const { error } = await supabase.from("reminder_settings").upsert(
+      {
+        user_id: session.user.id,
+        reminder_time: reminderTime,
+        enabled: reminderEnabled,
+        updated_at: new Date(),
+      },
+      { onConflict: "user_id" },
+    );
+
+    setSavingReminder(false);
+
+    if (error) {
+      showToast("Failed to save reminder: " + error.message, "error");
+    } else {
+      showToast("Reminder saved!", "success");
+      onUpdateReminder?.(reminderTime, reminderEnabled);
+    }
+  };
+
+  const handleRequestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+    if (result === "granted") {
+      showToast("Notifications enabled!", "success");
+    } else if (result === "denied") {
+      showToast(
+        "Notifications blocked — you can re-enable them in your browser's site settings.",
+        "error",
+      );
     }
   };
 
@@ -414,6 +474,118 @@ export default function Profile({ session, onUpdateGoals }) {
 
           <Button type="submit" fullWidth>
             Save profile
+          </Button>
+        </form>
+      </Card>
+
+      {/* Daily reminder */}
+      <Card accent="var(--ember)">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "12px",
+          }}
+        >
+          <BellRing size={18} color="var(--ember)" />
+          <h3 style={{ fontSize: "15px" }}>Daily reminder</h3>
+        </div>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "var(--ink-soft)",
+            marginBottom: "14px",
+          }}
+        >
+          Get a nudge to log your meals and activity at a time that works for
+          you.
+        </p>
+
+        <form
+          onSubmit={handleSaveReminder}
+          style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 12px",
+              backgroundColor: "var(--paper)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <label
+              htmlFor="reminder-enabled"
+              style={{ fontSize: "14px", fontWeight: 500 }}
+            >
+              Remind me daily
+            </label>
+            <input
+              id="reminder-enabled"
+              type="checkbox"
+              checked={reminderEnabled}
+              onChange={(e) => setReminderEnabled(e.target.checked)}
+              style={{
+                width: "18px",
+                height: "18px",
+                accentColor: "var(--ember)",
+              }}
+            />
+          </div>
+
+          <Field label="Reminder time">
+            <input
+              type="time"
+              value={reminderTime}
+              onChange={(e) => setReminderTime(e.target.value)}
+              disabled={!reminderEnabled}
+              style={{ ...inputStyle, opacity: reminderEnabled ? 1 : 0.5 }}
+            />
+          </Field>
+
+          {notifPermission !== "granted" &&
+            notifPermission !== "unsupported" && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--ink-soft)",
+                  backgroundColor: "var(--paper)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <span>
+                  {notifPermission === "denied"
+                    ? "Browser notifications are blocked — reminders will still appear in-app while it's open."
+                    : "Enable browser notifications so reminders reach you even in another tab."}
+                </span>
+                {notifPermission === "default" && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleRequestNotifPermission}
+                  >
+                    Enable notifications
+                  </Button>
+                )}
+              </div>
+            )}
+
+          <Button
+            type="submit"
+            variant="secondary"
+            fullWidth
+            disabled={savingReminder}
+          >
+            {savingReminder ? "Saving..." : "Save reminder"}
           </Button>
         </form>
       </Card>

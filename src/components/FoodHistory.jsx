@@ -7,6 +7,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirmDialog";
 import Card from "./ui/Card";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -80,10 +82,17 @@ export default function FoodHistory({ session, onBack }) {
   }, [fetchDayLogs]);
 
   const handleDeleteEntry = async (id) => {
-    if (!window.confirm("Remove this entry?")) return;
+    const confirmed = await confirmDialog({
+      title: "Remove entry?",
+      message: "This food entry will be permanently removed from your log.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!confirmed) return;
+
     const { error } = await supabase.from("logs").delete().eq("id", id);
     if (error) {
-      alert("Failed to delete: " + error.message);
+      showToast("Failed to delete: " + error.message, "error");
     } else {
       fetchDayLogs();
       fetchMonthSummary();

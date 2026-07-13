@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
@@ -19,26 +20,35 @@ export default function ResetPasswordScreen({ onDone }) {
     e.preventDefault();
 
     if (!validatePassword(newPassword)) {
-      alert(
-        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one special character.",
+      showToast(
+        "Password must be at least 8 characters, with an uppercase letter, lowercase letter, and special character.",
+        "error",
       );
       return;
     }
     if (newPassword !== confirmPassword) {
-      alert("Passwords don't match.");
+      showToast("Passwords don't match.", "error");
       return;
     }
 
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setLoading(false);
 
     if (error) {
-      alert("Failed to update password: " + error.message);
+      setLoading(false);
+      showToast("Failed to update password: " + error.message, "error");
       return;
     }
 
-    alert("Password updated!! You're signed in.");
+    // Sign out deliberately: land the user back on the sign-in screen so they
+    // confirm the new password works, rather than silently staying logged in
+    // on whatever recovery session Supabase created.
+    await supabase.auth.signOut();
+    setLoading(false);
+    showToast(
+      "Password updated — please sign in with your new password.",
+      "success",
+    );
     onDone();
   };
 
