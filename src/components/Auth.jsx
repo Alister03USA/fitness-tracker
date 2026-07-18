@@ -3,9 +3,9 @@ import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
-import PasswordInput from "./ui/PassportInput";
+import PasswordInput from "./ui/PasswordInput";
 
-export default function Auth() {
+export default function Auth({ onSignUpFlowChange }) {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -58,30 +58,47 @@ export default function Auth() {
     setLoading(true);
 
     if (isSigningUp) {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (signUpError) {
-        showToast(
-          signUpError.error_description || signUpError.message,
-          "error",
-        );
-      } else if (data?.user) {
-        await supabase.from("profiles").upsert({
-          id: data.user.id,
-          email: data.user.email,
-          name: name,
-          age: parseInt(age) || null,
-          gender: gender,
-          height_cm: parseFloat(height) || null,
-          weight_kg: parseFloat(weight) || null,
+      onSignUpFlowChange?.(true);
+      try {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
         });
 
-        await supabase.auth.signOut();
-        setIsSigningUp(false);
-        setStep(1);
+        if (signUpError) {
+          showToast(
+            signUpError.error_description || signUpError.message,
+            "error",
+          );
+        } else if (data?.user) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .upsert({
+              id: data.user.id,
+              email: data.user.email,
+              name: name,
+              age: parseInt(age) || null,
+              gender: gender,
+              height_cm: parseFloat(height) || null,
+              weight_kg: parseFloat(weight) || null,
+            });
+
+          if (profileError) {
+            showToast(
+              "Account created, but saving your profile failed: " +
+                profileError.message,
+              "error",
+            );
+          } else {
+            showToast("Account created — sign in to get started.", "success");
+          }
+
+          await supabase.auth.signOut();
+          setIsSigningUp(false);
+          setStep(1);
+        }
+      } finally {
+        onSignUpFlowChange?.(false);
       }
     } else {
       const { error: signInError } = await supabase.auth.signInWithPassword({

@@ -36,6 +36,11 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  // supabase.auth.signUp() creates a real session immediately if email
+  // confirmation is off — Auth.jsx deliberately signs back out afterward so
+  // new users land on the sign-in screen, but without this flag App.jsx
+  // would flash the dashboard during that brief in-between window.
+  const [suppressSessionForSignup, setSuppressSessionForSignup] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [logMode, setLogMode] = useState("meal"); // "meal" | "exercise"
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -205,10 +210,7 @@ export default function App() {
             .eq("id", payload.new.id)
             .single();
 
-          showToast(
-            `${data?.actor?.name || "Someone"} ${data?.message || "sent you a notification."}`,
-            "info",
-          );
+          showToast(`${data?.actor?.name || "Someone"} ${data?.message || "sent you a notification."}`, "info");
         },
       )
       .subscribe();
@@ -267,17 +269,11 @@ export default function App() {
       const todayStr = todayDateString();
       const lastFired = localStorage.getItem("reminderLastFiredDate");
 
-      if (
-        nowHHMM === reminderSettings.reminder_time &&
-        lastFired !== todayStr
-      ) {
+      if (nowHHMM === reminderSettings.reminder_time && lastFired !== todayStr) {
         localStorage.setItem("reminderLastFiredDate", todayStr);
         showToast("Time to log your meals and activity for today!", "info");
 
-        if (
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
           new Notification("Fitness Tracker", {
             body: "Time to log your meals and activity for today!",
           });
@@ -341,10 +337,7 @@ export default function App() {
 
   const handleDeleteWorkout = useCallback(
     async (workoutId) => {
-      const { error } = await supabase
-        .from("workouts")
-        .delete()
-        .eq("id", workoutId);
+      const { error } = await supabase.from("workouts").delete().eq("id", workoutId);
       if (error) {
         showToast("Failed to delete workout: " + error.message, "error");
       } else {
@@ -354,10 +347,7 @@ export default function App() {
     [fetchTodayWorkouts],
   );
 
-  const caloriesBurned = todayWorkouts.reduce(
-    (sum, w) => sum + (w.calories_burned || 0),
-    0,
-  );
+  const caloriesBurned = todayWorkouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
 
   const handleAddMeal = useCallback(
     async (meal) => {
@@ -417,10 +407,10 @@ export default function App() {
     );
   }
 
-  if (!session) {
+  if (!session || suppressSessionForSignup) {
     return (
       <>
-        <Auth />
+        <Auth onSignUpFlowChange={setSuppressSessionForSignup} />
         <ToastHost />
         <ConfirmHost />
       </>
@@ -563,16 +553,11 @@ export default function App() {
           />
         )}
         {activeTab === "history" && (
-          <FoodHistory
-            session={session}
-            onBack={() => setActiveTab("dashboard")}
-          />
+          <FoodHistory session={session} onBack={() => setActiveTab("dashboard")} />
         )}
         {activeTab === "log" && (
           <div>
-            <div
-              style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}
-            >
+            <div style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}>
               <button
                 onClick={() => setLogMode("meal")}
                 style={logModeBtnStyle(logMode === "meal")}
