@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
-import PasswordInput from "./ui/PasswordInput";
+import PasswordInput from "./ui/PassportInput";
 
 export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
   const [loading, setLoading] = useState(true);
