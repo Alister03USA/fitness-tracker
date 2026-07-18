@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
+import PasswordInput from "./ui/PasswordInput";
 
 export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
   const [loading, setLoading] = useState(true);
@@ -608,8 +609,7 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
           style={{ display: "flex", flexDirection: "column", gap: "14px" }}
         >
           <Field label="New password">
-            <input
-              type="password"
+            <PasswordInput
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Secure password"
@@ -617,8 +617,7 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
             />
           </Field>
           <Field label="Confirm new password">
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter password"

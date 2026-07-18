@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
+import PasswordInput from "./ui/PasswordInput";
 
 export default function Auth() {
   const [isSigningUp, setIsSigningUp] = useState(false);
@@ -38,12 +40,13 @@ export default function Auth() {
   const handleNextStep = (e) => {
     e.preventDefault();
     if (!validateEmail(email)) {
-      alert("Please enter a valid email address.");
+      showToast("Please enter a valid email address.", "error");
       return;
     }
     if (!validatePassword(password)) {
-      alert(
-        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one special character.",
+      showToast(
+        "Password must be at least 8 characters, with an uppercase letter, lowercase letter, and special character.",
+        "error",
       );
       return;
     }
@@ -61,7 +64,10 @@ export default function Auth() {
       });
 
       if (signUpError) {
-        alert(signUpError.error_description || signUpError.message);
+        showToast(
+          signUpError.error_description || signUpError.message,
+          "error",
+        );
       } else if (data?.user) {
         await supabase.from("profiles").upsert({
           id: data.user.id,
@@ -84,7 +90,10 @@ export default function Auth() {
       });
 
       if (signInError) {
-        alert(signInError.error_description || signInError.message);
+        showToast(
+          signInError.error_description || signInError.message,
+          "error",
+        );
       }
     }
 
@@ -105,7 +114,7 @@ export default function Auth() {
     });
 
     if (error) {
-      alert(error.message);
+      showToast(error.message, "error");
     } else {
       setResetSent(true);
     }
@@ -151,9 +160,15 @@ export default function Auth() {
           <Card>
             {resetSent ? (
               <div style={{ textAlign: "center", padding: "8px 0" }}>
-                <p style={{ fontSize: "14px", color: "var(--ink)", marginBottom: "16px" }}>
-                  Sent to <strong>{resetEmail}</strong>. Click the link in that email — it'll
-                  bring you back here to set a new password.
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: "var(--ink)",
+                    marginBottom: "16px",
+                  }}
+                >
+                  Sent to <strong>{resetEmail}</strong>. Click the link in that
+                  email — it'll bring you back here to set a new password.
                 </p>
                 <Button variant="secondary" fullWidth onClick={backToSignIn}>
                   Back to sign in
@@ -162,7 +177,11 @@ export default function Auth() {
             ) : (
               <form
                 onSubmit={handleSendResetLink}
-                style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "14px",
+                }}
               >
                 <Field label="Email">
                   <input
@@ -177,7 +196,12 @@ export default function Auth() {
                 <Button type="submit" fullWidth disabled={resetLoading}>
                   {resetLoading ? "Sending..." : "Send reset link"}
                 </Button>
-                <Button type="button" variant="ghost" fullWidth onClick={backToSignIn}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  fullWidth
+                  onClick={backToSignIn}
+                >
                   Back to sign in
                 </Button>
               </form>
@@ -253,8 +277,7 @@ export default function Auth() {
                   />
                 </Field>
                 <Field label="Password">
-                  <input
-                    type="password"
+                  <PasswordInput
                     placeholder="Secure password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

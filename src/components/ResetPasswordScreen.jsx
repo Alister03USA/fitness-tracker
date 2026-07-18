@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
+import PasswordInput from "./ui/PasswordInput";
 
 const validatePassword = (password) => {
   const re =
@@ -101,8 +102,7 @@ export default function ResetPasswordScreen({ onDone }) {
           >
             <div>
               <label style={labelStyle}>New password</label>
-              <input
-                type="password"
+              <PasswordInput
                 placeholder="Secure password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -112,8 +112,7 @@ export default function ResetPasswordScreen({ onDone }) {
             </div>
             <div>
               <label style={labelStyle}>Confirm password</label>
-              <input
-                type="password"
+              <PasswordInput
                 placeholder="Re-enter password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

@@ -6,6 +6,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { analyzeFoodPhoto } from "../lib/logmeal";
+import { resizeImageFile } from "../lib/imageResize";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
@@ -45,7 +46,8 @@ export default function FoodLogger({ onAddMeal }) {
     setErrorMsg("");
 
     try {
-      const data = await analyzeFoodPhoto(imageFile);
+      const resized = await resizeImageFile(imageFile);
+      const data = await analyzeFoodPhoto(resized);
 
       setFoodName(data.foodName || "Unrecognized Dish");
       setCalories(data.calories || 0);
@@ -59,7 +61,8 @@ export default function FoodLogger({ onAddMeal }) {
     } catch (err) {
       console.error(err);
       setErrorMsg(
-        "Couldn't read that photo. Try another angle, or enter the details manually below.",
+        err.message ||
+          "Couldn't read that photo. Enter the details manually below.",
       );
     } finally {
       setIsAnalyzing(false);
