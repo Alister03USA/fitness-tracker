@@ -23,13 +23,6 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
-const QUICK_MESSAGES = [
-  "Nice work today.",
-  "Want to check in later?",
-  "How did that feel?",
-  "Great consistency.",
-];
-
 export default function Chat({ session }) {
   const [activeTab, setActiveTab] = useState("direct");
   const userId = session?.user?.id;
@@ -64,16 +57,6 @@ export default function Chat({ session }) {
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
   const [isPrivateGroup, setIsPrivateGroup] = useState(false);
-  const directSearch = searchQuery.trim().toLowerCase();
-  const groupSearch = groupSearchQuery.trim().toLowerCase();
-  const filteredFriends = friends.filter((friend) =>
-    (friend.name || "User").toLowerCase().includes(directSearch),
-  );
-  const filteredDiscoverGroups = discoverGroups.filter((group) => {
-    const searchable =
-      `${group.name || ""} ${group.description || ""}`.toLowerCase();
-    return !groupSearch || searchable.includes(groupSearch);
-  });
 
   // ==========================================
   // DATA FETCHING
@@ -959,24 +942,6 @@ export default function Chat({ session }) {
 
         {/* Messages List */}
         <div style={messagesWindowStyle}>
-          {currentMessages.length === 0 && (
-            <div style={emptyChatStyle}>
-              <MessageCircle size={28} color="var(--ink-soft)" />
-              <h4 style={{ margin: "10px 0 6px", fontSize: "14px" }}>
-                Start the conversation
-              </h4>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "13px",
-                  color: "var(--ink-soft)",
-                }}
-              >
-                Send a check-in, ask about training, or share a meal idea.
-              </p>
-            </div>
-          )}
-
           {currentMessages.map((msg) => {
             const isMe = msg.sender_id === userId;
             const reactions = isGroup
@@ -1038,12 +1003,6 @@ export default function Chat({ session }) {
                     msg.content === "📷 Sent an image" ? null : (
                       <div>{msg.content}</div>
                     )}
-                    <div style={messageTimeStyle(isMe)}>
-                      {new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </div>
                   </div>
 
                   <div
@@ -1136,19 +1095,6 @@ export default function Chat({ session }) {
           </div>
         )}
 
-        <div style={quickReplyRowStyle}>
-          {QUICK_MESSAGES.map((message) => (
-            <button
-              key={message}
-              type="button"
-              onClick={() => setNewMessage(message)}
-              style={quickReplyChipStyle}
-            >
-              {message}
-            </button>
-          ))}
-        </div>
-
         <form onSubmit={handleSendMessage} style={inputContainerStyle}>
           <label style={iconBtnStyle}>
             <Camera size={18} />
@@ -1173,12 +1119,11 @@ export default function Chat({ session }) {
           </label>
           <input
             type="text"
-            placeholder={`Message ${targetName}...`}
+            placeholder="Message..."
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value.slice(0, 500))}
+            onChange={(e) => setNewMessage(e.target.value)}
             style={inputFieldStyle}
             disabled={uploading}
-            maxLength={500}
           />
           <button
             type="submit"
@@ -1204,6 +1149,14 @@ export default function Chat({ session }) {
         overflowY: "auto",
       }}
     >
+      <div>
+        <p style={brandEyebrowStyle}>MoveCircle</p>
+        <h2 style={{ fontSize: "20px", marginBottom: "4px" }}>Your circle</h2>
+        <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
+          Message friends, plan group check-ins, and keep encouragement close.
+        </p>
+      </div>
+
       {/* Tab Selector */}
       <div style={{ display: "flex", gap: "8px" }}>
         <button
@@ -1225,12 +1178,14 @@ export default function Chat({ session }) {
         <>
           <input
             type="text"
-            placeholder="Search friends..."
+            placeholder="Search your circle..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={searchInputStyle}
           />
-          {filteredFriends.length === 0 ? (
+          {friends.filter((f) =>
+            f.name?.toLowerCase().includes(searchQuery.toLowerCase()),
+          ).length === 0 ? (
             <p
               style={{
                 color: "var(--ink-soft)",
@@ -1239,42 +1194,45 @@ export default function Chat({ session }) {
                 padding: "20px 0",
               }}
             >
-              No friends found.
+              No MoveCircle friends found.
             </p>
           ) : (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "8px" }}
             >
-              {filteredFriends.map((friend) => (
-                <Card
-                  key={friend.id}
-                  onClick={() => setActiveChat(friend)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "14px",
-                    cursor: "pointer",
-                    padding: "12px 16px",
-                  }}
-                >
-                  <img
-                    src={friend.avatar_url || "https://via.placeholder.com/45"}
-                    alt="Avatar"
+              {friends
+                .filter((f) =>
+                  f.name?.toLowerCase().includes(searchQuery.toLowerCase()),
+                )
+                .map((friend) => (
+                  <Card
+                    key={friend.id}
+                    onClick={() => setActiveChat(friend)}
                     style={{
-                      width: "45px",
-                      height: "45px",
-                      borderRadius: "50%",
-                      objectFit: "cover",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "14px",
+                      cursor: "pointer",
+                      padding: "12px 16px",
                     }}
-                  />
-                  <div style={{ minWidth: 0 }}>
+                  >
+                    <img
+                      src={
+                        friend.avatar_url || "https://via.placeholder.com/45"
+                      }
+                      alt="Avatar"
+                      style={{
+                        width: "45px",
+                        height: "45px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
+                    />
                     <strong style={{ fontSize: "14px", color: "var(--ink)" }}>
                       {friend.name || "User"}
                     </strong>
-                    <div style={listPreviewStyle}>Tap to open chat</div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
             </div>
           )}
         </>
@@ -1476,7 +1434,7 @@ export default function Chat({ session }) {
             <div
               style={{ display: "flex", flexDirection: "column", gap: "8px" }}
             >
-              {filteredDiscoverGroups.map((group) => (
+              {discoverGroups.map((group) => (
                 <Card
                   key={group.id}
                   style={{
@@ -1539,11 +1497,6 @@ export default function Chat({ session }) {
                       >
                         {group.is_private ? "Private" : "Public"}
                       </span>
-                      {group.description && (
-                        <div style={groupDescriptionStyle}>
-                          {group.description}
-                        </div>
-                      )}
                     </div>
                   </div>
                   {group.isPending ? (
@@ -1567,7 +1520,7 @@ export default function Chat({ session }) {
                   )}
                 </Card>
               ))}
-              {filteredDiscoverGroups.length === 0 && (
+              {discoverGroups.length === 0 && (
                 <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
                   No discoverable groups.
                 </p>
@@ -1599,6 +1552,16 @@ const subTabStyle = (active) => ({
   fontSize: "13px",
   cursor: "pointer",
 });
+
+const brandEyebrowStyle = {
+  marginBottom: "2px",
+  color: "var(--ember)",
+  fontSize: "12px",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+};
+
 const searchInputStyle = {
   width: "100%",
   padding: "10px 12px",
@@ -1631,15 +1594,6 @@ const messagesWindowStyle = {
   overflowY: "auto",
   backgroundColor: "var(--paper)",
 };
-const emptyChatStyle = {
-  minHeight: "100%",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center",
-  padding: "32px 16px",
-};
 const myMessageStyle = {
   backgroundColor: "var(--ember)",
   color: "white",
@@ -1658,30 +1612,6 @@ const theirMessageStyle = {
   maxWidth: "80%",
   fontSize: "14px",
   wordWrap: "break-word",
-};
-const messageTimeStyle = (isMe) => ({
-  marginTop: "5px",
-  fontSize: "10px",
-  color: isMe ? "rgba(255,255,255,0.75)" : "var(--ink-faint)",
-  textAlign: isMe ? "right" : "left",
-});
-const quickReplyRowStyle = {
-  display: "flex",
-  gap: "8px",
-  overflowX: "auto",
-  padding: "8px 10px",
-  backgroundColor: "var(--card)",
-  borderTop: "1px solid var(--line)",
-};
-const quickReplyChipStyle = {
-  border: "1px solid var(--line)",
-  backgroundColor: "var(--paper)",
-  color: "var(--ink)",
-  borderRadius: "var(--radius-full)",
-  padding: "7px 10px",
-  fontSize: "12px",
-  whiteSpace: "nowrap",
-  cursor: "pointer",
 };
 const inputContainerStyle = {
   display: "flex",
@@ -1762,20 +1692,6 @@ const cancelPreviewBtnStyle = {
   color: "var(--danger)",
   cursor: "pointer",
   display: "flex",
-};
-const listPreviewStyle = {
-  marginTop: "3px",
-  color: "var(--ink-soft)",
-  fontSize: "12px",
-};
-const groupDescriptionStyle = {
-  marginTop: "3px",
-  color: "var(--ink-soft)",
-  fontSize: "11px",
-  maxWidth: "190px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
 };
 const fullScreenOverlayStyle = {
   position: "fixed",

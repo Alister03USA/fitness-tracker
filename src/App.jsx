@@ -353,7 +353,7 @@ export default function App() {
           typeof Notification !== "undefined" &&
           Notification.permission === "granted"
         ) {
-          new Notification("Fitness Tracker", {
+          new Notification("MoveCircle", {
             body: "Time to log your meals and activity for today!",
           });
         }
@@ -474,7 +474,7 @@ export default function App() {
             color: "var(--ink-soft)",
           }}
         >
-          Loading Fitness Tracker...
+          Loading MoveCircle...
         </div>
         <ToastHost />
         <ConfirmHost />
@@ -551,7 +551,7 @@ export default function App() {
               }}
             />
           )}
-          <h1 style={{ fontSize: "17px" }}>Fitness Tracker</h1>
+          <h1 style={{ fontSize: "17px" }}>MoveCircle</h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button

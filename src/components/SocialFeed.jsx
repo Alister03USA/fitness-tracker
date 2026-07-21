@@ -22,12 +22,6 @@ const SUB_TABS = [
   { key: "notifications", label: "Alerts", icon: Bell },
 ];
 
-const POST_PROMPTS = [
-  "Finished a solid workout today.",
-  "Logged a meal that kept me energized.",
-  "Trying to stay consistent this week.",
-];
-
 export default function SocialFeed({ session, jumpToNotifications }) {
   const [activeSubTab, setActiveSubTab] = useState("feed");
   const [posts, setPosts] = useState([]);
@@ -257,8 +251,7 @@ export default function SocialFeed({ session, jumpToNotifications }) {
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    const cleanCaption = caption.trim();
-    if (!cleanCaption && !imageFile) return;
+    if (!caption && !imageFile) return;
 
     setUploading(true);
     let imageUrl = "";
@@ -282,9 +275,7 @@ export default function SocialFeed({ session, jumpToNotifications }) {
 
       await supabase
         .from("posts")
-        .insert([
-          { user_id: userId, caption: cleanCaption, image_url: imageUrl },
-        ]);
+        .insert([{ user_id: userId, caption, image_url: imageUrl }]);
       setCaption("");
       setImageFile(null);
       fetchPosts();
@@ -428,47 +419,15 @@ export default function SocialFeed({ session, jumpToNotifications }) {
       {activeSubTab === "feed" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <Card>
-            <div style={sectionHeaderStyle}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: "14px" }}>Create post</h4>
-                <p style={sectionHintStyle}>
-                  Share progress, ideas, or check-ins with your friends.
-                </p>
-              </div>
-              <span style={counterStyle}>{caption.length}/240</span>
-            </div>
-            <div style={promptRowStyle}>
-              {POST_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => setCaption(prompt)}
-                  style={promptChipStyle}
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              Create post
+            </h4>
             <textarea
-              placeholder="Share a workout, meal idea, or consistency check-in..."
+              placeholder="Share a workout victory or meal log..."
               value={caption}
-              onChange={(e) => setCaption(e.target.value.slice(0, 240))}
+              onChange={(e) => setCaption(e.target.value)}
               style={textareaStyle}
-              maxLength={240}
             />
-            {imageFile && (
-              <div style={selectedFileStyle}>
-                <span>{imageFile.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setImageFile(null)}
-                  style={clearFileBtnStyle}
-                  aria-label="Remove selected image"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
             <div
               style={{
                 display: "flex",
@@ -483,37 +442,11 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                 onChange={(e) => setImageFile(e.target.files[0])}
                 style={{ fontSize: "12px", maxWidth: "150px" }}
               />
-              <Button
-                size="sm"
-                onClick={handleCreatePost}
-                disabled={uploading || (!caption.trim() && !imageFile)}
-              >
+              <Button size="sm" onClick={handleCreatePost} disabled={uploading}>
                 {uploading ? "Posting..." : "Post"}
               </Button>
             </div>
           </Card>
-
-          {posts.length === 0 && (
-            <Card style={{ textAlign: "center" }}>
-              <Newspaper
-                size={26}
-                color="var(--ink-soft)"
-                style={{ marginBottom: "8px" }}
-              />
-              <h4 style={{ margin: "0 0 6px", fontSize: "14px" }}>
-                Your feed is quiet
-              </h4>
-              <p
-                style={{
-                  margin: 0,
-                  color: "var(--ink-soft)",
-                  fontSize: "13px",
-                }}
-              >
-                Add friends or share a check-in to start the activity feed.
-              </p>
-            </Card>
-          )}
 
           {posts.map((post) => {
             const isLiked = post.post_likes?.some((l) => l.user_id === userId);
@@ -548,11 +481,8 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                       }}
                     />
                     <strong style={{ fontSize: "14px" }}>
-                      {post.profiles?.name || "Fitness User"}
+                      {post.profiles?.name || "MoveCircle User"}
                     </strong>
-                    <span style={timestampStyle}>
-                      {new Date(post.created_at).toLocaleDateString()}
-                    </span>
                   </div>
 
                   {post.user_id === userId && (
@@ -573,11 +503,9 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                   )}
                 </div>
 
-                {post.caption && (
-                  <p style={{ margin: "5px 0", fontSize: "14px" }}>
-                    {post.caption}
-                  </p>
-                )}
+                <p style={{ margin: "5px 0", fontSize: "14px" }}>
+                  {post.caption}
+                </p>
 
                 {post.image_url && (
                   <img
@@ -939,69 +867,6 @@ const badgeStyle = {
   alignItems: "center",
   justifyContent: "center",
   marginLeft: "2px",
-};
-const sectionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "12px",
-  marginBottom: "10px",
-};
-const sectionHintStyle = {
-  margin: "4px 0 0",
-  color: "var(--ink-soft)",
-  fontSize: "12px",
-  lineHeight: 1.35,
-};
-const counterStyle = {
-  color: "var(--ink-soft)",
-  fontSize: "11px",
-  whiteSpace: "nowrap",
-};
-const promptRowStyle = {
-  display: "flex",
-  gap: "8px",
-  overflowX: "auto",
-  paddingBottom: "8px",
-  marginBottom: "8px",
-};
-const promptChipStyle = {
-  border: "1px solid var(--line)",
-  backgroundColor: "var(--paper)",
-  color: "var(--ink)",
-  borderRadius: "var(--radius-full)",
-  padding: "7px 10px",
-  fontSize: "12px",
-  whiteSpace: "nowrap",
-  cursor: "pointer",
-};
-const selectedFileStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "8px",
-  marginTop: "8px",
-  padding: "8px 10px",
-  border: "1px solid var(--line)",
-  borderRadius: "var(--radius-sm)",
-  backgroundColor: "var(--paper)",
-  color: "var(--ink-soft)",
-  fontSize: "12px",
-};
-const clearFileBtnStyle = {
-  display: "flex",
-  alignItems: "center",
-  border: "none",
-  background: "transparent",
-  color: "var(--danger)",
-  cursor: "pointer",
-};
-const timestampStyle = {
-  display: "block",
-  marginTop: "2px",
-  color: "var(--ink-faint)",
-  fontSize: "11px",
-  fontWeight: 400,
 };
 const likeBtnStyle = (isLiked) => ({
   border: "none",

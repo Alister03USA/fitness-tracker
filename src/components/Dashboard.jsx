@@ -75,6 +75,7 @@ export default function Dashboard({
         }}
       >
         <div>
+          <p style={brandEyebrowStyle}>MoveCircle</p>
           <h2 style={{ fontSize: "20px" }}>Today</h2>
           <p
             style={{
@@ -423,6 +424,15 @@ const historyBtnStyle = {
   border: "1px solid var(--line)",
   borderRadius: "var(--radius-full)",
   cursor: "pointer",
+};
+
+const brandEyebrowStyle = {
+  marginBottom: "2px",
+  color: "var(--ember)",
+  fontSize: "12px",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
 };
 
 const editTriggerStyle = {

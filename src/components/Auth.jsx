@@ -5,11 +5,6 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 import PasswordInput from "./ui/PassportInput";
 
-const toDateString = (date = new Date()) => {
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60000).toISOString().split("T")[0];
-};
-
 export default function Auth({ onSignUpFlowChange }) {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [step, setStep] = useState(1);
@@ -76,7 +71,6 @@ export default function Auth({ onSignUpFlowChange }) {
             "error",
           );
         } else if (data?.user) {
-          const startingWeight = parseFloat(weight) || null;
           const { error: profileError } = await supabase
             .from("profiles")
             .upsert({
@@ -86,7 +80,7 @@ export default function Auth({ onSignUpFlowChange }) {
               age: parseInt(age) || null,
               gender: gender,
               height_cm: parseFloat(height) || null,
-              weight_kg: startingWeight,
+              weight_kg: parseFloat(weight) || null,
             });
 
           if (profileError) {
@@ -96,27 +90,6 @@ export default function Auth({ onSignUpFlowChange }) {
               "error",
             );
           } else {
-            if (startingWeight) {
-              const { error: weightLogError } = await supabase
-                .from("weight_logs")
-                .upsert(
-                  {
-                    user_id: data.user.id,
-                    log_date: toDateString(),
-                    weight_kg: startingWeight,
-                    updated_at: new Date(),
-                  },
-                  { onConflict: "user_id,log_date" },
-                );
-
-              if (weightLogError) {
-                console.warn(
-                  "Initial weight log failed:",
-                  weightLogError.message,
-                );
-              }
-            }
-
             showToast("Account created — sign in to get started.", "success");
           }
 
@@ -269,6 +242,7 @@ export default function Auth({ onSignUpFlowChange }) {
     >
       <div style={{ width: "100%", maxWidth: "380px" }}>
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <div style={brandMarkStyle}>MoveCircle</div>
           <h2
             style={{
               fontFamily: "var(--font-display)",
@@ -282,8 +256,9 @@ export default function Auth({ onSignUpFlowChange }) {
             {isSigningUp && step === 1 && "Step 1 of 2 — account details"}
             {isSigningUp &&
               step === 2 &&
-              "Step 2 of 2 — personalize your profile"}
-            {!isSigningUp && "Sign in to track your progress"}
+              "Step 2 of 2 — personalize your MoveCircle profile"}
+            {!isSigningUp &&
+              "Sign in to keep your movement, meals, and circle together"}
           </p>
 
           {isSigningUp && (
@@ -450,6 +425,20 @@ const dotStyle = (filled) => ({
   borderRadius: "var(--radius-full)",
   backgroundColor: filled ? "var(--ember)" : "var(--line)",
 });
+
+const brandMarkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  marginBottom: "12px",
+  borderRadius: "var(--radius-full)",
+  backgroundColor: "var(--ember-soft)",
+  color: "var(--ember)",
+  fontSize: "13px",
+  fontWeight: 800,
+  letterSpacing: "0.02em",
+};
 
 const labelStyle = {
   display: "block",

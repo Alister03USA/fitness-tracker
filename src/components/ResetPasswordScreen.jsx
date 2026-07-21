@@ -66,6 +66,7 @@ export default function ResetPasswordScreen({ onDone }) {
     >
       <div style={{ width: "100%", maxWidth: "380px" }}>
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <div style={brandMarkStyle}>MoveCircle</div>
           <div
             style={{
               width: "48px",
@@ -91,7 +92,7 @@ export default function ResetPasswordScreen({ onDone }) {
             Set a new password
           </h2>
           <p style={{ color: "var(--ink-soft)", fontSize: "14px" }}>
-            Choose a new password for your account.
+            Choose a new password for your MoveCircle account.
           </p>
         </div>
 
@@ -136,6 +137,20 @@ const labelStyle = {
   fontSize: "13px",
   fontWeight: 600,
   color: "var(--ink)",
+};
+
+const brandMarkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  marginBottom: "12px",
+  borderRadius: "var(--radius-full)",
+  backgroundColor: "var(--ember-soft)",
+  color: "var(--ember)",
+  fontSize: "13px",
+  fontWeight: 800,
+  letterSpacing: "0.02em",
 };
 
 const inputStyle = {
