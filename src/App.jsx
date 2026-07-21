@@ -40,7 +40,8 @@ export default function App() {
   // confirmation is off — Auth.jsx deliberately signs back out afterward so
   // new users land on the sign-in screen, but without this flag App.jsx
   // would flash the dashboard during that brief in-between window.
-  const [suppressSessionForSignup, setSuppressSessionForSignup] = useState(false);
+  const [suppressSessionForSignup, setSuppressSessionForSignup] =
+    useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [logMode, setLogMode] = useState("meal"); // "meal" | "exercise"
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -72,13 +73,14 @@ export default function App() {
     return new Date(d.getTime() - offset * 60000).toISOString().split("T")[0];
   };
 
-  const handleUpdateGoals = (newCalorieGoal, newAvatarUrl) => {
+  const handleUpdateGoals = (newCalorieGoal, newAvatarUrl, newStepGoal) => {
     setUserStats((prev) => ({
       ...prev,
       calorieGoal: newCalorieGoal,
       proteinGoal: Math.round((newCalorieGoal * 0.3) / 4),
       carbsGoal: Math.round((newCalorieGoal * 0.4) / 4),
       fatGoal: Math.round((newCalorieGoal * 0.3) / 9),
+      ...(newStepGoal ? { stepGoal: newStepGoal } : {}),
     }));
     if (newAvatarUrl) setAvatarUrl(newAvatarUrl);
   };
@@ -150,6 +152,20 @@ export default function App() {
     setUserStats((prev) => ({ ...prev, steps: data?.steps || 0 }));
   }, [session]);
 
+  const fetchStepGoal = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("step_goal")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (data?.step_goal) {
+      setUserStats((prev) => ({ ...prev, stepGoal: data.step_goal }));
+    }
+  }, [session]);
+
   const fetchTodayWorkouts = useCallback(async () => {
     if (!session?.user?.id) return;
 
@@ -168,7 +184,61 @@ export default function App() {
       fetchTodayLogs();
       fetchTodaySteps();
       fetchTodayWorkouts();
+      fetchStepGoal();
     }
+  }, [
+    session,
+    fetchTodayLogs,
+    fetchTodaySteps,
+    fetchTodayWorkouts,
+    fetchStepGoal,
+  ]);
+
+  // Realtime for logs/steps/workouts — without this, a meal logged on one
+  // device/tab wouldn't show up on another until it happened to refetch.
+  // Matches the same live pattern already used for Chat, groups, and
+  // friendships. Filtered to this user's rows only; each handler re-runs
+  // its normal "today" query, so it naturally ignores changes to past days.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const channel = supabase
+      .channel("app-daily-data")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "logs",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        () => fetchTodayLogs(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "daily_steps",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        () => fetchTodaySteps(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "workouts",
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        () => fetchTodayWorkouts(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [session, fetchTodayLogs, fetchTodaySteps, fetchTodayWorkouts]);
 
   // Notification bell — lives at the App level (not inside SocialFeed) so the
@@ -210,7 +280,10 @@ export default function App() {
             .eq("id", payload.new.id)
             .single();
 
-          showToast(`${data?.actor?.name || "Someone"} ${data?.message || "sent you a notification."}`, "info");
+          showToast(
+            `${data?.actor?.name || "Someone"} ${data?.message || "sent you a notification."}`,
+            "info",
+          );
         },
       )
       .subscribe();
@@ -269,11 +342,17 @@ export default function App() {
       const todayStr = todayDateString();
       const lastFired = localStorage.getItem("reminderLastFiredDate");
 
-      if (nowHHMM === reminderSettings.reminder_time && lastFired !== todayStr) {
+      if (
+        nowHHMM === reminderSettings.reminder_time &&
+        lastFired !== todayStr
+      ) {
         localStorage.setItem("reminderLastFiredDate", todayStr);
         showToast("Time to log your meals and activity for today!", "info");
 
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
           new Notification("Fitness Tracker", {
             body: "Time to log your meals and activity for today!",
           });
@@ -337,7 +416,10 @@ export default function App() {
 
   const handleDeleteWorkout = useCallback(
     async (workoutId) => {
-      const { error } = await supabase.from("workouts").delete().eq("id", workoutId);
+      const { error } = await supabase
+        .from("workouts")
+        .delete()
+        .eq("id", workoutId);
       if (error) {
         showToast("Failed to delete workout: " + error.message, "error");
       } else {
@@ -347,7 +429,10 @@ export default function App() {
     [fetchTodayWorkouts],
   );
 
-  const caloriesBurned = todayWorkouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
+  const caloriesBurned = todayWorkouts.reduce(
+    (sum, w) => sum + (w.calories_burned || 0),
+    0,
+  );
 
   const handleAddMeal = useCallback(
     async (meal) => {
@@ -553,11 +638,16 @@ export default function App() {
           />
         )}
         {activeTab === "history" && (
-          <FoodHistory session={session} onBack={() => setActiveTab("dashboard")} />
+          <FoodHistory
+            session={session}
+            onBack={() => setActiveTab("dashboard")}
+          />
         )}
         {activeTab === "log" && (
           <div>
-            <div style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}>
+            <div
+              style={{ display: "flex", gap: "8px", padding: "20px 20px 0" }}
+            >
               <button
                 onClick={() => setLogMode("meal")}
                 style={logModeBtnStyle(logMode === "meal")}

@@ -5,6 +5,11 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 import PasswordInput from "./ui/PassportInput";
 
+const toDateString = (date = new Date()) => {
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().split("T")[0];
+};
+
 export default function Auth({ onSignUpFlowChange }) {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [step, setStep] = useState(1);
@@ -71,6 +76,7 @@ export default function Auth({ onSignUpFlowChange }) {
             "error",
           );
         } else if (data?.user) {
+          const startingWeight = parseFloat(weight) || null;
           const { error: profileError } = await supabase
             .from("profiles")
             .upsert({
@@ -80,7 +86,7 @@ export default function Auth({ onSignUpFlowChange }) {
               age: parseInt(age) || null,
               gender: gender,
               height_cm: parseFloat(height) || null,
-              weight_kg: parseFloat(weight) || null,
+              weight_kg: startingWeight,
             });
 
           if (profileError) {
@@ -90,6 +96,27 @@ export default function Auth({ onSignUpFlowChange }) {
               "error",
             );
           } else {
+            if (startingWeight) {
+              const { error: weightLogError } = await supabase
+                .from("weight_logs")
+                .upsert(
+                  {
+                    user_id: data.user.id,
+                    log_date: toDateString(),
+                    weight_kg: startingWeight,
+                    updated_at: new Date(),
+                  },
+                  { onConflict: "user_id,log_date" },
+                );
+
+              if (weightLogError) {
+                console.warn(
+                  "Initial weight log failed:",
+                  weightLogError.message,
+                );
+              }
+            }
+
             showToast("Account created — sign in to get started.", "success");
           }
 

@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Newspaper, Users, Bell, Heart, MessageCircle, Trash2, UserPlus, Check, X } from "lucide-react";
+import {
+  Newspaper,
+  Users,
+  Bell,
+  Heart,
+  MessageCircle,
+  Trash2,
+  UserPlus,
+  Check,
+  X,
+} from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirmDialog";
@@ -10,6 +20,12 @@ const SUB_TABS = [
   { key: "feed", label: "Feed", icon: Newspaper },
   { key: "friends", label: "Friends", icon: Users },
   { key: "notifications", label: "Alerts", icon: Bell },
+];
+
+const POST_PROMPTS = [
+  "Finished a solid workout today.",
+  "Logged a meal that kept me energized.",
+  "Trying to stay consistent this week.",
 ];
 
 export default function SocialFeed({ session, jumpToNotifications }) {
@@ -157,7 +173,55 @@ export default function SocialFeed({ session, jumpToNotifications }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchPosts, fetchFriendData, fetchNotifications, fetchPendingRequestIds, userId]);
+  }, [
+    fetchPosts,
+    fetchFriendData,
+    fetchNotifications,
+    fetchPendingRequestIds,
+    userId,
+  ]);
+
+  // Realtime friendships — covers both directions: someone responding to a
+  // request I sent (updates pendingRequestIds / friendsList live), and
+  // someone sending *me* a new request (updates the Pending list live).
+  // postgres_changes filters only support one column condition each, so
+  // this needs two separate listeners rather than one OR'd filter.
+  useEffect(() => {
+    if (!userId) return;
+
+    const refetchFriendState = () => {
+      fetchFriendData();
+      fetchPendingRequestIds();
+    };
+
+    const channel = supabase
+      .channel("realtime-friendships")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+          filter: `requester_id=eq.${userId}`,
+        },
+        refetchFriendState,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+          filter: `addressee_id=eq.${userId}`,
+        },
+        refetchFriendState,
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, fetchFriendData, fetchPendingRequestIds]);
 
   const handleSendRequestToUser = async (targetUser) => {
     const { error: friendErr } = await supabase.from("friendships").insert([
@@ -184,13 +248,17 @@ export default function SocialFeed({ session, jumpToNotifications }) {
       // search dropdown — the recipient's bell/toast (App.jsx) already
       // fires in realtime off the notifications insert above.
       setPendingRequestIds((prev) => new Set(prev).add(targetUser.id));
-      showToast(`Friend request sent to ${targetUser.name || "user"}!`, "success");
+      showToast(
+        `Friend request sent to ${targetUser.name || "user"}!`,
+        "success",
+      );
     }
   };
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!caption && !imageFile) return;
+    const cleanCaption = caption.trim();
+    if (!cleanCaption && !imageFile) return;
 
     setUploading(true);
     let imageUrl = "";
@@ -214,7 +282,9 @@ export default function SocialFeed({ session, jumpToNotifications }) {
 
       await supabase
         .from("posts")
-        .insert([{ user_id: userId, caption, image_url: imageUrl }]);
+        .insert([
+          { user_id: userId, caption: cleanCaption, image_url: imageUrl },
+        ]);
       setCaption("");
       setImageFile(null);
       fetchPosts();
@@ -323,12 +393,22 @@ export default function SocialFeed({ session, jumpToNotifications }) {
   };
 
   return (
-    <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
+    <div
+      style={{
+        padding: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "14px",
+      }}
+    >
       {/* Sub-tab bar — icon+label pills matching the main nav language */}
       <div style={{ display: "flex", gap: "8px" }}>
         {SUB_TABS.map(({ key, label, icon: Icon }) => {
           const isActive = activeSubTab === key;
-          const onClick = key === "notifications" ? markNotificationsRead : () => setActiveSubTab(key);
+          const onClick =
+            key === "notifications"
+              ? markNotificationsRead
+              : () => setActiveSubTab(key);
           return (
             <button key={key} onClick={onClick} style={subTabStyle(isActive)}>
               <Icon size={15} />
@@ -348,44 +428,143 @@ export default function SocialFeed({ session, jumpToNotifications }) {
       {activeSubTab === "feed" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <Card>
-            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>Create post</h4>
+            <div style={sectionHeaderStyle}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: "14px" }}>Create post</h4>
+                <p style={sectionHintStyle}>
+                  Share progress, ideas, or check-ins with your friends.
+                </p>
+              </div>
+              <span style={counterStyle}>{caption.length}/240</span>
+            </div>
+            <div style={promptRowStyle}>
+              {POST_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => setCaption(prompt)}
+                  style={promptChipStyle}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
             <textarea
-              placeholder="Share a workout victory or meal log..."
+              placeholder="Share a workout, meal idea, or consistency check-in..."
               value={caption}
-              onChange={(e) => setCaption(e.target.value)}
+              onChange={(e) => setCaption(e.target.value.slice(0, 240))}
               style={textareaStyle}
+              maxLength={240}
             />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+            {imageFile && (
+              <div style={selectedFileStyle}>
+                <span>{imageFile.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setImageFile(null)}
+                  style={clearFileBtnStyle}
+                  aria-label="Remove selected image"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "10px",
+              }}
+            >
               <input
                 type="file"
                 accept="image/*"
                 onChange={(e) => setImageFile(e.target.files[0])}
                 style={{ fontSize: "12px", maxWidth: "150px" }}
               />
-              <Button size="sm" onClick={handleCreatePost} disabled={uploading}>
+              <Button
+                size="sm"
+                onClick={handleCreatePost}
+                disabled={uploading || (!caption.trim() && !imageFile)}
+              >
                 {uploading ? "Posting..." : "Post"}
               </Button>
             </div>
           </Card>
 
+          {posts.length === 0 && (
+            <Card style={{ textAlign: "center" }}>
+              <Newspaper
+                size={26}
+                color="var(--ink-soft)"
+                style={{ marginBottom: "8px" }}
+              />
+              <h4 style={{ margin: "0 0 6px", fontSize: "14px" }}>
+                Your feed is quiet
+              </h4>
+              <p
+                style={{
+                  margin: 0,
+                  color: "var(--ink-soft)",
+                  fontSize: "13px",
+                }}
+              >
+                Add friends or share a check-in to start the activity feed.
+              </p>
+            </Card>
+          )}
+
           {posts.map((post) => {
             const isLiked = post.post_likes?.some((l) => l.user_id === userId);
             return (
               <Card key={post.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
                     <img
-                      src={post.profiles?.avatar_url || "https://via.placeholder.com/40"}
+                      src={
+                        post.profiles?.avatar_url ||
+                        "https://via.placeholder.com/40"
+                      }
                       alt="avatar"
-                      style={{ width: "35px", height: "35px", borderRadius: "50%", objectFit: "cover" }}
+                      style={{
+                        width: "35px",
+                        height: "35px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
                     />
-                    <strong style={{ fontSize: "14px" }}>{post.profiles?.name || "Fitness User"}</strong>
+                    <strong style={{ fontSize: "14px" }}>
+                      {post.profiles?.name || "Fitness User"}
+                    </strong>
+                    <span style={timestampStyle}>
+                      {new Date(post.created_at).toLocaleDateString()}
+                    </span>
                   </div>
 
                   {post.user_id === userId && (
                     <button
                       onClick={() => handleDeletePost(post.id)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", display: "flex" }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--danger)",
+                        display: "flex",
+                      }}
                       title="Delete Post"
                       aria-label="Delete post"
                     >
@@ -394,7 +573,11 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                   )}
                 </div>
 
-                <p style={{ margin: "5px 0", fontSize: "14px" }}>{post.caption}</p>
+                {post.caption && (
+                  <p style={{ margin: "5px 0", fontSize: "14px" }}>
+                    {post.caption}
+                  </p>
+                )}
 
                 {post.image_url && (
                   <img
@@ -410,26 +593,55 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                   />
                 )}
 
-                <div style={{ display: "flex", gap: "18px", alignItems: "center", margin: "10px 0" }}>
-                  <button onClick={() => handleToggleLike(post)} style={likeBtnStyle(isLiked)}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "18px",
+                    alignItems: "center",
+                    margin: "10px 0",
+                  }}
+                >
+                  <button
+                    onClick={() => handleToggleLike(post)}
+                    style={likeBtnStyle(isLiked)}
+                  >
                     <Heart size={16} fill={isLiked ? "var(--ember)" : "none"} />
                     {post.post_likes?.length || 0}
                   </button>
-                  <span style={{ fontSize: "13px", color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "var(--ink-soft)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
                     <MessageCircle size={15} />
                     {post.post_comments?.length || 0}
                   </span>
                 </div>
 
-                <div style={{ backgroundColor: "var(--paper)", padding: "10px", borderRadius: "var(--radius-sm)" }}>
+                <div
+                  style={{
+                    backgroundColor: "var(--paper)",
+                    padding: "10px",
+                    borderRadius: "var(--radius-sm)",
+                  }}
+                >
                   {post.post_comments?.map((c) => (
-                    <div key={c.id} style={{ fontSize: "13px", marginBottom: "4px" }}>
+                    <div
+                      key={c.id}
+                      style={{ fontSize: "13px", marginBottom: "4px" }}
+                    >
                       <strong>{c.profiles?.name || "User"}: </strong>
                       {c.comment_text}
                     </div>
                   ))}
 
-                  <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                  <div
+                    style={{ display: "flex", gap: "6px", marginTop: "8px" }}
+                  >
                     <input
                       type="text"
                       placeholder="Write a comment..."
@@ -457,7 +669,9 @@ export default function SocialFeed({ session, jumpToNotifications }) {
       {activeSubTab === "friends" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <Card style={{ position: "relative" }}>
-            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>Find users & add friends</h4>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              Find users & add friends
+            </h4>
             <input
               type="text"
               placeholder="Search by name or email..."
@@ -469,11 +683,25 @@ export default function SocialFeed({ session, jumpToNotifications }) {
             {searchQuery.trim() !== "" && (
               <div style={dropdownStyle}>
                 {isSearching ? (
-                  <div style={{ padding: "12px", textAlign: "center", color: "var(--ink-soft)", fontSize: "13px" }}>
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "var(--ink-soft)",
+                      fontSize: "13px",
+                    }}
+                  >
                     Searching...
                   </div>
                 ) : searchResults.length === 0 ? (
-                  <div style={{ padding: "12px", textAlign: "center", color: "var(--ink-soft)", fontSize: "13px" }}>
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "var(--ink-soft)",
+                      fontSize: "13px",
+                    }}
+                  >
                     No users found for "{searchQuery}"
                   </div>
                 ) : (
@@ -482,17 +710,46 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                     return (
                       <div
                         key={user.id}
-                        style={isPending ? dropdownItemPendingStyle : dropdownItemStyle}
+                        style={
+                          isPending
+                            ? dropdownItemPendingStyle
+                            : dropdownItemStyle
+                        }
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                          }}
+                        >
                           <img
-                            src={user.avatar_url || "https://via.placeholder.com/30"}
+                            src={
+                              user.avatar_url ||
+                              "https://via.placeholder.com/30"
+                            }
                             alt="avatar"
-                            style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                            }}
                           />
                           <div>
-                            <strong style={{ display: "block", fontSize: "14px" }}>{user.name || "User"}</strong>
-                            <span style={{ fontSize: "11px", color: "var(--ink-soft)" }}>{user.email || "No email"}</span>
+                            <strong
+                              style={{ display: "block", fontSize: "14px" }}
+                            >
+                              {user.name || "User"}
+                            </strong>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "var(--ink-soft)",
+                              }}
+                            >
+                              {user.email || "No email"}
+                            </span>
                           </div>
                         </div>
                         {isPending ? (
@@ -501,7 +758,10 @@ export default function SocialFeed({ session, jumpToNotifications }) {
                             Requested
                           </span>
                         ) : (
-                          <Button size="sm" onClick={() => handleSendRequestToUser(user)}>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSendRequestToUser(user)}
+                          >
                             <UserPlus size={13} />
                             Add
                           </Button>
@@ -516,17 +776,36 @@ export default function SocialFeed({ session, jumpToNotifications }) {
 
           {friendRequests.length > 0 && (
             <Card>
-              <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>Pending requests ({friendRequests.length})</h4>
+              <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+                Pending requests ({friendRequests.length})
+              </h4>
               {friendRequests.map((req) => (
-                <div key={req.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <div
+                  key={req.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
+                  }}
+                >
                   <span style={{ fontSize: "13px" }}>
-                    <strong>{req.requester?.name || "A User"}</strong> sent a friend request.
+                    <strong>{req.requester?.name || "A User"}</strong> sent a
+                    friend request.
                   </span>
                   <div style={{ display: "flex", gap: "6px" }}>
-                    <button onClick={() => handleRespondRequest(req, "accepted")} style={roundIconBtnStyle("var(--sprout)")} aria-label="Accept">
+                    <button
+                      onClick={() => handleRespondRequest(req, "accepted")}
+                      style={roundIconBtnStyle("var(--sprout)")}
+                      aria-label="Accept"
+                    >
                       <Check size={14} />
                     </button>
-                    <button onClick={() => handleRespondRequest(req, "declined")} style={roundIconBtnStyle("var(--danger)")} aria-label="Decline">
+                    <button
+                      onClick={() => handleRespondRequest(req, "declined")}
+                      style={roundIconBtnStyle("var(--danger)")}
+                      aria-label="Decline"
+                    >
                       <X size={14} />
                     </button>
                   </div>
@@ -536,20 +815,44 @@ export default function SocialFeed({ session, jumpToNotifications }) {
           )}
 
           <Card>
-            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>My friends ({friendsList.length})</h4>
+            <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+              My friends ({friendsList.length})
+            </h4>
             {friendsList.length === 0 ? (
-              <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>No friends added yet.</p>
+              <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
+                No friends added yet.
+              </p>
             ) : (
               friendsList.map((f) => {
-                const friendProfile = f.requester_id === userId ? f.addressee : f.requester;
+                const friendProfile =
+                  f.requester_id === userId ? f.addressee : f.requester;
                 return (
-                  <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                  <div
+                    key={f.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "8px 0",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
                     <img
-                      src={friendProfile?.avatar_url || "https://via.placeholder.com/30"}
+                      src={
+                        friendProfile?.avatar_url ||
+                        "https://via.placeholder.com/30"
+                      }
                       alt="avatar"
-                      style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
+                      style={{
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
                     />
-                    <strong style={{ fontSize: "14px" }}>{friendProfile?.name || "Friend"}</strong>
+                    <strong style={{ fontSize: "14px" }}>
+                      {friendProfile?.name || "Friend"}
+                    </strong>
                   </div>
                 );
               })
@@ -561,16 +864,34 @@ export default function SocialFeed({ session, jumpToNotifications }) {
       {/* --- NOTIFICATIONS TAB --- */}
       {activeSubTab === "notifications" && (
         <Card>
-          <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>Activity notifications</h4>
+          <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>
+            Activity notifications
+          </h4>
           {notifications.length === 0 ? (
-            <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>No notifications yet.</p>
+            <p style={{ color: "var(--ink-soft)", fontSize: "13px" }}>
+              No notifications yet.
+            </p>
           ) : (
             notifications.map((n) => (
-              <div key={n.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+              <div
+                key={n.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
                 <img
                   src={n.actor?.avatar_url || "https://via.placeholder.com/30"}
                   alt="avatar"
-                  style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover" }}
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                  }}
                 />
                 <div>
                   <span style={{ fontSize: "13px" }}>
@@ -618,6 +939,69 @@ const badgeStyle = {
   alignItems: "center",
   justifyContent: "center",
   marginLeft: "2px",
+};
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "10px",
+};
+const sectionHintStyle = {
+  margin: "4px 0 0",
+  color: "var(--ink-soft)",
+  fontSize: "12px",
+  lineHeight: 1.35,
+};
+const counterStyle = {
+  color: "var(--ink-soft)",
+  fontSize: "11px",
+  whiteSpace: "nowrap",
+};
+const promptRowStyle = {
+  display: "flex",
+  gap: "8px",
+  overflowX: "auto",
+  paddingBottom: "8px",
+  marginBottom: "8px",
+};
+const promptChipStyle = {
+  border: "1px solid var(--line)",
+  backgroundColor: "var(--paper)",
+  color: "var(--ink)",
+  borderRadius: "var(--radius-full)",
+  padding: "7px 10px",
+  fontSize: "12px",
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+};
+const selectedFileStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "8px",
+  marginTop: "8px",
+  padding: "8px 10px",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-sm)",
+  backgroundColor: "var(--paper)",
+  color: "var(--ink-soft)",
+  fontSize: "12px",
+};
+const clearFileBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  border: "none",
+  background: "transparent",
+  color: "var(--danger)",
+  cursor: "pointer",
+};
+const timestampStyle = {
+  display: "block",
+  marginTop: "2px",
+  color: "var(--ink-faint)",
+  fontSize: "11px",
+  fontWeight: 400,
 };
 const likeBtnStyle = (isLiked) => ({
   border: "none",

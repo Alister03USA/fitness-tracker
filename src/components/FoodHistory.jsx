@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   Flame,
@@ -18,6 +19,19 @@ const toDateString = (d) => {
   return new Date(d.getTime() - offset * 60000).toISOString().split("T")[0];
 };
 
+const startOfWeek = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+};
+
+const addDays = (date, days) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
 export default function FoodHistory({ session, onBack }) {
   const userId = session?.user?.id;
   const [monthCursor, setMonthCursor] = useState(() => {
@@ -26,9 +40,14 @@ export default function FoodHistory({ session, onBack }) {
     return d;
   });
   const [selectedDate, setSelectedDate] = useState(toDateString(new Date()));
+  const [weekStart, setWeekStart] = useState(() =>
+    toDateString(startOfWeek(new Date())),
+  );
   const [monthSummary, setMonthSummary] = useState({}); // { 'YYYY-MM-DD': { calories, count } }
   const [dayLogs, setDayLogs] = useState([]);
+  const [weekLogs, setWeekLogs] = useState([]);
   const [loadingDay, setLoadingDay] = useState(false);
+  const [loadingWeek, setLoadingWeek] = useState(false);
 
   const fetchMonthSummary = useCallback(async () => {
     if (!userId) return;
@@ -73,6 +92,25 @@ export default function FoodHistory({ session, onBack }) {
     setLoadingDay(false);
   }, [userId, selectedDate]);
 
+  const fetchWeekLogs = useCallback(async () => {
+    if (!userId || !weekStart) return;
+    setLoadingWeek(true);
+
+    const weekEnd = toDateString(addDays(new Date(weekStart + "T00:00:00"), 6));
+
+    const { data } = await supabase
+      .from("logs")
+      .select("id, log_date, food_name, protein, carbs, fat, created_at")
+      .eq("user_id", userId)
+      .gte("log_date", weekStart)
+      .lte("log_date", weekEnd)
+      .order("log_date", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    setWeekLogs(data || []);
+    setLoadingWeek(false);
+  }, [userId, weekStart]);
+
   useEffect(() => {
     fetchMonthSummary();
   }, [fetchMonthSummary]);
@@ -80,6 +118,10 @@ export default function FoodHistory({ session, onBack }) {
   useEffect(() => {
     fetchDayLogs();
   }, [fetchDayLogs]);
+
+  useEffect(() => {
+    fetchWeekLogs();
+  }, [fetchWeekLogs]);
 
   const handleDeleteEntry = async (id) => {
     const confirmed = await confirmDialog({
@@ -96,6 +138,7 @@ export default function FoodHistory({ session, onBack }) {
     } else {
       fetchDayLogs();
       fetchMonthSummary();
+      fetchWeekLogs();
     }
   };
 
@@ -103,6 +146,11 @@ export default function FoodHistory({ session, onBack }) {
     const next = new Date(monthCursor);
     next.setMonth(next.getMonth() + delta);
     setMonthCursor(next);
+  };
+
+  const changeWeek = (delta) => {
+    const next = addDays(new Date(weekStart + "T00:00:00"), delta * 7);
+    setWeekStart(toDateString(next));
   };
 
   // Build calendar grid cells (leading blanks + days of month)
@@ -140,6 +188,20 @@ export default function FoodHistory({ session, onBack }) {
     day: "numeric",
   });
 
+  const weekEnd = toDateString(addDays(new Date(weekStart + "T00:00:00"), 6));
+  const weekLabel = `${new Date(weekStart + "T00:00:00").toLocaleDateString(
+    undefined,
+    {
+      month: "short",
+      day: "numeric",
+    },
+  )} - ${new Date(weekEnd + "T00:00:00").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })}`;
+
+  const weeklySummary = buildWeeklySummary(weekLogs, weekStart);
+
   return (
     <div
       style={{
@@ -159,6 +221,111 @@ export default function FoodHistory({ session, onBack }) {
         </button>
         <h2 style={{ fontSize: "18px" }}>Food history</h2>
       </div>
+
+      <Card style={{ padding: "14px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <BarChart3 size={17} color="var(--sprout)" />
+            <div>
+              <h3 style={{ fontSize: "15px" }}>Weekly summary</h3>
+              <p style={mutedSmallStyle}>{weekLabel}</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              onClick={() => changeWeek(-1)}
+              style={monthNavBtnStyle}
+              aria-label="Previous week"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              onClick={() => changeWeek(1)}
+              style={monthNavBtnStyle}
+              aria-label="Next week"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {loadingWeek ? (
+          <p style={emptySummaryStyle}>Loading weekly summary...</p>
+        ) : weekLogs.length === 0 ? (
+          <p style={emptySummaryStyle}>
+            No meals logged this week yet. Saved and recent foods will make the
+            next entries faster.
+          </p>
+        ) : (
+          <>
+            <div style={summaryGridStyle}>
+              <SummaryMetric label="Meals" value={weeklySummary.mealCount} />
+              <SummaryMetric
+                label="Logged days"
+                value={`${weeklySummary.loggedDays}/7`}
+              />
+              <SummaryMetric
+                label="Avg meals/day"
+                value={weeklySummary.avgMealsPerLoggedDay}
+              />
+            </div>
+
+            <div style={weekStripStyle}>
+              {weeklySummary.days.map((day) => (
+                <div key={day.date} style={weekDayStyle(day.count > 0)}>
+                  <span style={{ fontSize: "10px", fontWeight: 700 }}>
+                    {day.label}
+                  </span>
+                  <span className="stat-number" style={{ fontSize: "13px" }}>
+                    {day.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={macroSummaryStyle}>
+              <MacroPill
+                label="Protein"
+                value={weeklySummary.protein}
+                color="var(--sprout)"
+                bg="var(--sprout-soft)"
+              />
+              <MacroPill
+                label="Carbs"
+                value={weeklySummary.carbs}
+                color="var(--butter)"
+                bg="var(--butter-soft)"
+              />
+              <MacroPill
+                label="Fat"
+                value={weeklySummary.fat}
+                color="var(--plum)"
+                bg="var(--plum-soft)"
+              />
+            </div>
+
+            {weeklySummary.topFoods.length > 0 && (
+              <div style={{ marginTop: "12px" }}>
+                <h4 style={smallSectionTitleStyle}>Most logged</h4>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {weeklySummary.topFoods.map((food) => (
+                    <span key={food.name} style={topFoodStyle}>
+                      {food.name} ×{food.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
 
       {/* Month navigation */}
       <Card style={{ padding: "14px" }}>
@@ -388,6 +555,67 @@ function MacroPill({ label, value, color, bg }) {
   );
 }
 
+function SummaryMetric({ label, value }) {
+  return (
+    <div style={summaryMetricStyle}>
+      <div style={{ fontSize: "10px", color: "var(--ink-soft)" }}>{label}</div>
+      <div className="stat-number" style={{ fontSize: "16px" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function buildWeeklySummary(logs, weekStart) {
+  const dayMap = new Map();
+  Array.from({ length: 7 }, (_, i) => {
+    const date = toDateString(addDays(new Date(weekStart + "T00:00:00"), i));
+    dayMap.set(date, {
+      date,
+      label: WEEKDAYS[i],
+      count: 0,
+    });
+  });
+
+  const topFoodMap = new Map();
+  const totals = logs.reduce(
+    (sum, log) => {
+      const day = dayMap.get(log.log_date);
+      if (day) day.count += 1;
+
+      const name = log.food_name || "Meal";
+      topFoodMap.set(name, (topFoodMap.get(name) || 0) + 1);
+
+      return {
+        protein: sum.protein + (log.protein || 0),
+        carbs: sum.carbs + (log.carbs || 0),
+        fat: sum.fat + (log.fat || 0),
+      };
+    },
+    { protein: 0, carbs: 0, fat: 0 },
+  );
+
+  const loggedDays = Array.from(dayMap.values()).filter(
+    (day) => day.count > 0,
+  ).length;
+
+  const topFoods = Array.from(topFoodMap, ([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 3);
+
+  return {
+    days: Array.from(dayMap.values()),
+    mealCount: logs.length,
+    loggedDays,
+    avgMealsPerLoggedDay:
+      loggedDays > 0 ? (logs.length / loggedDays).toFixed(1) : "0",
+    protein: Math.round(totals.protein),
+    carbs: Math.round(totals.carbs),
+    fat: Math.round(totals.fat),
+    topFoods,
+  };
+}
+
 const backBtnStyle = {
   background: "none",
   border: "1px solid var(--line)",
@@ -445,4 +673,75 @@ const deleteBtnStyle = {
   cursor: "pointer",
   display: "flex",
   padding: "2px",
+};
+
+const mutedSmallStyle = {
+  fontSize: "11px",
+  color: "var(--ink-faint)",
+  marginTop: "2px",
+};
+
+const emptySummaryStyle = {
+  color: "var(--ink-soft)",
+  fontSize: "13px",
+  textAlign: "center",
+  margin: "4px 0",
+};
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "8px",
+  marginBottom: "10px",
+};
+
+const summaryMetricStyle = {
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-md)",
+  padding: "9px 8px",
+  textAlign: "center",
+};
+
+const weekStripStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(7, 1fr)",
+  gap: "5px",
+  marginBottom: "10px",
+};
+
+const weekDayStyle = (active) => ({
+  minHeight: "42px",
+  borderRadius: "var(--radius-sm)",
+  backgroundColor: active ? "var(--sprout-soft)" : "var(--card)",
+  color: active ? "var(--sprout)" : "var(--ink-faint)",
+  border: active ? "1px solid var(--sprout)" : "1px solid var(--line)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "2px",
+});
+
+const macroSummaryStyle = {
+  display: "flex",
+  gap: "8px",
+};
+
+const smallSectionTitleStyle = {
+  fontSize: "11px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--ink-soft)",
+  margin: "0 0 7px 0",
+};
+
+const topFoodStyle = {
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "var(--ink)",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-full)",
+  padding: "6px 9px",
 };
