@@ -5,7 +5,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const LOGMEAL_URL = "https://api.logmeal.com/v2/image/segmentation/complete";
+const LOGMEAL_SEGMENT_URL =
+  "https://api.logmeal.com/v2/image/segmentation/complete";
+const LOGMEAL_NUTRITION_URL =
+  "https://api.logmeal.com/v2/nutrition/recipe/nutritionalInfo";
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders });
@@ -92,6 +95,41 @@ function extractCandidates(data: any) {
   });
 }
 
+function extractRecognizedName(data: any) {
+  return (
+    data?.segmentation_results?.[0]?.recognition_results?.[0]?.name ||
+    data?.recognition_results?.[0]?.name ||
+    (Array.isArray(data?.foodName) ? data.foodName[0] : data?.foodName) ||
+    "Recognized meal"
+  );
+}
+
+function nutrientValue(data: any, key: string) {
+  return data?.nutritional_info?.totalNutrients?.[key]?.quantity ?? 0;
+}
+
+function parseNutrition(data: any, fallbackName: string) {
+  const foodName = Array.isArray(data?.foodName) ? data.foodName[0] : data?.foodName;
+
+  return {
+    foodName: foodName || fallbackName,
+    calories: Math.round(
+      data?.nutritional_info?.calories ?? nutrientValue(data, "ENERC_KCAL"),
+    ),
+    proteinGrams: Math.round(nutrientValue(data, "PROCNT")),
+    carbsGrams: Math.round(nutrientValue(data, "CHOCDF")),
+    fatGrams: Math.round(nutrientValue(data, "FAT")),
+    fiberGrams: Math.round(nutrientValue(data, "FIBTG")),
+    sugarGrams: Math.round(nutrientValue(data, "SUGAR")),
+    sodiumMg: Math.round(nutrientValue(data, "NA")),
+  };
+}
+
+async function readJson(response: Response) {
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -119,22 +157,51 @@ Deno.serve(async (req) => {
     const form = new FormData();
     form.append("image", image);
 
-    const response = await fetch(LOGMEAL_URL, {
+    const segmentResponse = await fetch(LOGMEAL_SEGMENT_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: form,
     });
 
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
+    const segmentData = await readJson(segmentResponse);
 
-    if (!response.ok) {
+    if (!segmentResponse.ok) {
       throw new Error(
-        data?.message || data?.error || `LogMeal returned ${response.status}`,
+        segmentData?.message ||
+          segmentData?.error ||
+          `LogMeal returned ${segmentResponse.status}`,
       );
     }
 
-    return jsonResponse({ candidates: extractCandidates(data) });
+    const imageId = segmentData.imageId;
+    if (!imageId) {
+      throw new Error("LogMeal did not return an imageId for this photo.");
+    }
+
+    const recognizedName = extractRecognizedName(segmentData);
+    const nutritionResponse = await fetch(LOGMEAL_NUTRITION_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ imageId }),
+    });
+
+    const nutritionData = await readJson(nutritionResponse);
+
+    if (!nutritionResponse.ok) {
+      throw new Error(
+        nutritionData?.message ||
+          nutritionData?.error ||
+          `LogMeal nutrition returned ${nutritionResponse.status}`,
+      );
+    }
+
+    return jsonResponse({
+      ...parseNutrition(nutritionData, recognizedName),
+      candidates: extractCandidates(segmentData),
+    });
   } catch (error) {
     const message =
       error instanceof Error

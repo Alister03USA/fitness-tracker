@@ -19,8 +19,6 @@ import Button from "./ui/Button";
 
 const SAVED_FOODS_KEY = "fitnessTrackerSavedFoods";
 const RECENT_FOODS_KEY = "fitnessTrackerRecentFoods";
-const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
-const USDA_API_KEY = import.meta.env.VITE_USDA_FDC_API_KEY || "DEMO_KEY";
 const FOOD_FIELDS = [
   "name",
   "calories",
@@ -181,27 +179,17 @@ export default function FoodLogger({ onAddMeal }) {
     setUsdaError("");
 
     try {
-      let products = [];
+      const { data, error } = await supabase.functions.invoke("food-lookup", {
+        body: { source: "usda", query },
+      });
 
-      try {
-        const { data, error } = await supabase.functions.invoke("food-lookup", {
-          body: { source: "usda", query },
-        });
-
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        if (data?.source !== "usda") {
-          throw new Error("The deployed food lookup function needs an update.");
-        }
-        products = data?.products || [];
-      } catch (functionError) {
-        console.warn(
-          "[USDA] Edge lookup failed, using direct fallback.",
-          functionError,
-        );
-        products = await searchUsdaFoodsDirect(query);
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      if (data?.source !== "usda") {
+        throw new Error("Deploy the updated food-lookup function first.");
       }
 
+      const products = data?.products || [];
       setUsdaResults(products);
       if (products.length === 0) {
         setUsdaError("No USDA matches found. Try a simpler food name.");
@@ -615,126 +603,6 @@ function FoodShortcutSection({
       </div>
     </div>
   );
-}
-
-async function searchUsdaFoodsDirect(query) {
-  const params = new URLSearchParams({ api_key: USDA_API_KEY });
-  const response = await fetch(`${USDA_SEARCH_URL}?${params.toString()}`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query,
-      pageSize: 25,
-      dataType: ["Branded", "Survey (FNDDS)", "Foundation", "SR Legacy"],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error("USDA search is temporarily unavailable.");
-  }
-
-  const data = await response.json();
-  return rankUsdaFoods(data.foods || [], query).slice(0, 8);
-}
-
-function normalizeUsdaFood(food) {
-  const name = food.description || food.lowercaseDescription || "USDA food";
-  const brand = food.brandOwner || food.brandName || "";
-
-  return {
-    id: food.fdcId || `${name}-${brand}`,
-    name,
-    brand,
-    dataType: food.dataType || "",
-    serving: servingLabel(food),
-    calories: Math.round(usdaNutrientValue(food, [1008, "208", "energy"])),
-    protein: Math.round(usdaNutrientValue(food, [1003, "203", "protein"])),
-    carbs: Math.round(
-      usdaNutrientValue(food, [1005, "205", "carbohydrate, by difference"]),
-    ),
-    fat: Math.round(usdaNutrientValue(food, [1004, "204", "total lipid"])),
-    fiber: Math.round(
-      usdaNutrientValue(food, [1079, "291", "fiber, total dietary"]),
-    ),
-    sugar: Math.round(usdaNutrientValue(food, [2000, "269", "sugars"])),
-    sodium: Math.round(usdaNutrientValue(food, [1093, "307", "sodium"])),
-  };
-}
-
-function rankUsdaFoods(foods, query) {
-  return foods
-    .map((food) => ({
-      food: normalizeUsdaFood(food),
-      score: usdaScore(food, query),
-    }))
-    .sort((a, b) => b.score - a.score || a.food.name.localeCompare(b.food.name))
-    .map(({ food }) => food);
-}
-
-function usdaScore(food, query) {
-  const normalizedQuery = normalizeSearchText(query);
-  const name = normalizeSearchText(food.description || food.lowercaseDescription);
-  const brand = normalizeSearchText(food.brandOwner || food.brandName);
-  const combined = `${name} ${brand}`.trim();
-  const tokens = normalizedQuery.split(" ").filter(Boolean);
-  let score = 0;
-
-  if (name === normalizedQuery) score += 90;
-  if (name.startsWith(normalizedQuery)) score += 60;
-  if (name.includes(normalizedQuery)) score += 40;
-  if (tokens.length > 0 && tokens.every((token) => combined.includes(token))) {
-    score += 35;
-  }
-  if (brand && tokens.some((token) => brand.includes(token))) score += 20;
-  if (food.dataType === "Branded") score += 18;
-  if (food.dataType === "Survey (FNDDS)") score += 8;
-  if (food.dataType === "Foundation") score += 3;
-
-  return score;
-}
-
-function normalizeSearchText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function usdaNutrientValue(food, matchers) {
-  const nutrients = food.foodNutrients || [];
-  const found = nutrients.find((nutrient) => {
-    const unit = String(nutrient.unitName || nutrient.unit || "").toLowerCase();
-    if (matchers.includes("energy") && unit && unit !== "kcal") return false;
-
-    const keys = [
-      nutrient.nutrientId,
-      nutrient.nutrientNumber,
-      nutrient.number,
-      nutrient.nutrientName,
-      nutrient.name,
-    ].map((value) => String(value || "").toLowerCase());
-
-    return matchers.some((matcher) => {
-      const normalized = String(matcher).toLowerCase();
-      return keys.some((key) => key === normalized || key.includes(normalized));
-    });
-  });
-
-  const amount = found?.value ?? found?.amount ?? 0;
-  const unit = String(found?.unitName || found?.unit || "").toLowerCase();
-  if (unit === "g" && matchers.includes("sodium")) return amount * 1000;
-  return amount;
-}
-
-function servingLabel(food) {
-  if (food.householdServingFullText) return food.householdServingFullText;
-  if (food.servingSize && food.servingSizeUnit) {
-    return `${food.servingSize} ${food.servingSizeUnit}`;
-  }
-  return "100 g";
 }
 
 function MiniField({ label, value, onChange, placeholder }) {
