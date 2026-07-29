@@ -5,6 +5,9 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 import PasswordInput from "./ui/PassportInput";
 
+const REMEMBER_ME_KEY = "moveCircleRememberMe";
+const REMEMBERED_EMAIL_KEY = "moveCircleRememberedEmail";
+
 export default function Auth({ onSignUpFlowChange }) {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [step, setStep] = useState(1);
@@ -16,8 +19,13 @@ export default function Auth({ onSignUpFlowChange }) {
   const [resetLoading, setResetLoading] = useState(false);
 
   // Step 1 State
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    () => window.localStorage.getItem(REMEMBERED_EMAIL_KEY) || "",
+  );
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(
+    () => window.localStorage.getItem(REMEMBER_ME_KEY) !== "false",
+  );
 
   // Step 2 State (Profile Details)
   const [name, setName] = useState("");
@@ -101,6 +109,13 @@ export default function Auth({ onSignUpFlowChange }) {
         onSignUpFlowChange?.(false);
       }
     } else {
+      window.localStorage.setItem(REMEMBER_ME_KEY, String(rememberMe));
+      if (rememberMe) {
+        window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim());
+      } else {
+        window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+      }
+
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -304,6 +319,17 @@ export default function Auth({ onSignUpFlowChange }) {
                     required
                   />
                 </Field>
+                {!isSigningUp && (
+                  <label style={rememberRowStyle}>
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      style={rememberCheckboxStyle}
+                    />
+                    <span>Remember me</span>
+                  </label>
+                )}
               </>
             )}
 
@@ -457,4 +483,21 @@ const inputStyle = {
   fontSize: "14px",
   backgroundColor: "var(--card)",
   color: "var(--ink)",
+};
+
+const rememberRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "var(--ink-soft)",
+  cursor: "pointer",
+};
+
+const rememberCheckboxStyle = {
+  width: "16px",
+  height: "16px",
+  accentColor: "var(--ember)",
+  cursor: "pointer",
 };

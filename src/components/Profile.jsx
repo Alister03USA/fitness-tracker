@@ -10,6 +10,12 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { showToast } from "../lib/toast";
+import {
+  ensurePushSubscription,
+  getPushSubscriptionStatus,
+  pushSupported,
+  removePushSubscription,
+} from "../lib/pushNotifications";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import PasswordInput from "./ui/PassportInput";
@@ -62,6 +68,7 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== "undefined" ? Notification.permission : "unsupported",
   );
+  const [pushStatus, setPushStatus] = useState("checking");
 
   useEffect(() => {
     if (session) {
@@ -75,6 +82,12 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
       calculateMetrics();
     }
   }, [age, gender, heightCm, weightKg, activityLevel]);
+
+  useEffect(() => {
+    getPushSubscriptionStatus()
+      .then(setPushStatus)
+      .catch(() => setPushStatus("unsupported"));
+  }, []);
 
   const getProfile = async () => {
     try {
@@ -106,7 +119,7 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
 
       const { data: reminderData } = await supabase
         .from("reminder_settings")
-        .select("reminder_time, enabled")
+        .select("reminder_time, enabled, timezone")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -289,36 +302,62 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
   const handleSaveReminder = async (e) => {
     e.preventDefault();
     setSavingReminder(true);
+    const timezone =
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
     const { error } = await supabase.from("reminder_settings").upsert(
       {
         user_id: session.user.id,
         reminder_time: reminderTime,
         enabled: reminderEnabled,
+        timezone,
         updated_at: new Date(),
       },
       { onConflict: "user_id" },
     );
 
-    setSavingReminder(false);
-
     if (error) {
+      setSavingReminder(false);
       showToast("Failed to save reminder: " + error.message, "error");
-    } else {
-      showToast("Reminder saved!", "success");
+      return;
+    }
+
+    try {
+      if (reminderEnabled) {
+        await ensurePushSubscription(session.user.id);
+        setPushStatus("subscribed");
+        setNotifPermission(Notification.permission);
+        showToast("Reminder saved and phone notifications enabled!", "success");
+      } else {
+        await removePushSubscription(session.user.id);
+        setPushStatus(await getPushSubscriptionStatus());
+        showToast("Reminder saved.", "success");
+      }
       onUpdateReminder?.(reminderTime, reminderEnabled);
+    } catch (pushError) {
+      showToast(
+        `Reminder saved, but phone notifications are not enabled: ${pushError.message}`,
+        "error",
+      );
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const handleEnablePushNotifications = async () => {
+    try {
+      await ensurePushSubscription(session.user.id);
+      setNotifPermission(Notification.permission);
+      setPushStatus("subscribed");
+      showToast("Phone notifications enabled!", "success");
+    } catch (error) {
+      setPushStatus(pushSupported() ? Notification.permission : "unsupported");
+      showToast(error.message, "error");
     }
   };
 
   const handleRequestNotifPermission = async () => {
-    if (typeof Notification === "undefined") return;
-    const result = await Notification.requestPermission();
-    setNotifPermission(result);
-    if (result === "granted") {
-      showToast("Notifications enabled!", "success");
-    } else if (result === "denied") {
-      showToast("Notifications blocked — you can re-enable them in your browser's site settings.", "error");
-    }
+    await handleEnablePushNotifications();
   };
 
   const handleSaveWeightEntry = async (e) => {
@@ -824,6 +863,12 @@ export default function Profile({ session, onUpdateGoals, onUpdateReminder }) {
             />
           </Field>
 
+          {pushStatus === "subscribed" && (
+            <div style={pushStatusStyle}>
+              Phone notifications are enabled on this device.
+            </div>
+          )}
+
           {notifPermission !== "granted" && notifPermission !== "unsupported" && (
             <div
               style={{
@@ -1026,4 +1071,14 @@ const recentRowStyle = {
   alignItems: "center",
   fontSize: "12px",
   color: "var(--ink-soft)",
+};
+
+const pushStatusStyle = {
+  fontSize: "12px",
+  color: "var(--sprout)",
+  backgroundColor: "var(--sprout-soft)",
+  border: "1px solid var(--sprout)",
+  borderRadius: "var(--radius-sm)",
+  padding: "10px 12px",
+  fontWeight: 600,
 };

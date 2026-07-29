@@ -349,15 +349,6 @@ export default function App() {
       ) {
         localStorage.setItem("reminderLastFiredDate", todayStr);
         showToast("Time to log your meals and activity for today!", "info");
-
-        if (
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          new Notification("MoveCircle", {
-            body: "Time to log your meals and activity for today!",
-          });
-        }
       }
     };
 
