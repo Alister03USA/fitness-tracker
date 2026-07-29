@@ -3,12 +3,15 @@ import {
   Bookmark,
   Camera,
   Clock3,
+  Database,
   Image as ImageIcon,
+  Search,
   Sparkles,
   ChevronDown,
   Star,
   X,
 } from "lucide-react";
+import { supabase } from "../supabaseClient";
 import { analyzeFoodPhoto } from "../lib/logmeal";
 import { resizeImageFile } from "../lib/imageResize";
 import Card from "./ui/Card";
@@ -16,6 +19,8 @@ import Button from "./ui/Button";
 
 const SAVED_FOODS_KEY = "fitnessTrackerSavedFoods";
 const RECENT_FOODS_KEY = "fitnessTrackerRecentFoods";
+const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
+const USDA_API_KEY = import.meta.env.VITE_USDA_FDC_API_KEY || "DEMO_KEY";
 const FOOD_FIELDS = [
   "name",
   "calories",
@@ -48,6 +53,10 @@ export default function FoodLogger({ onAddMeal }) {
   const [scanComplete, setScanComplete] = useState(false);
   const [savedFoods, setSavedFoods] = useState([]);
   const [recentFoods, setRecentFoods] = useState([]);
+  const [usdaQuery, setUsdaQuery] = useState("");
+  const [usdaResults, setUsdaResults] = useState([]);
+  const [isSearchingUsda, setIsSearchingUsda] = useState(false);
+  const [usdaError, setUsdaError] = useState("");
 
   useEffect(() => {
     setSavedFoods(readStoredFoods(SAVED_FOODS_KEY));
@@ -88,6 +97,13 @@ export default function FoodLogger({ onAddMeal }) {
       (item) => item.name.toLowerCase() !== food.name.toLowerCase(),
     );
     updateStoredFoods(SAVED_FOODS_KEY, setSavedFoods, next);
+  };
+
+  const handleRemoveRecentFood = (food) => {
+    const next = recentFoods.filter(
+      (item) => item.name.toLowerCase() !== food.name.toLowerCase(),
+    );
+    updateStoredFoods(RECENT_FOODS_KEY, setRecentFoods, next);
   };
 
   const fillFromFood = (food) => {
@@ -156,6 +172,49 @@ export default function FoodLogger({ onAddMeal }) {
     }
   };
 
+  const handleUsdaSearch = async (e) => {
+    e.preventDefault();
+    const query = usdaQuery.trim();
+    if (!query) return;
+
+    setIsSearchingUsda(true);
+    setUsdaError("");
+
+    try {
+      let products = [];
+
+      try {
+        const { data, error } = await supabase.functions.invoke("food-lookup", {
+          body: { source: "usda", query },
+        });
+
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        if (data?.source !== "usda") {
+          throw new Error("The deployed food lookup function needs an update.");
+        }
+        products = data?.products || [];
+      } catch (functionError) {
+        console.warn(
+          "[USDA] Edge lookup failed, using direct fallback.",
+          functionError,
+        );
+        products = await searchUsdaFoodsDirect(query);
+      }
+
+      setUsdaResults(products);
+      if (products.length === 0) {
+        setUsdaError("No USDA matches found. Try a simpler food name.");
+      }
+    } catch (err) {
+      console.error(err);
+      setUsdaResults([]);
+      setUsdaError(err.message || "USDA search is temporarily unavailable.");
+    } finally {
+      setIsSearchingUsda(false);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!foodName || !calories) return;
@@ -196,6 +255,8 @@ export default function FoodLogger({ onAddMeal }) {
               icon={<Clock3 size={16} color="var(--ember)" />}
               foods={recentFoods}
               onUse={fillFromFood}
+              onRemove={handleRemoveRecentFood}
+              removable
             />
           )}
         </Card>
@@ -307,6 +368,88 @@ export default function FoodLogger({ onAddMeal }) {
           >
             {errorMsg}
           </p>
+        )}
+      </Card>
+
+      {/* Manual USDA lookup */}
+      <Card accent="var(--sprout)" style={{ backgroundColor: "#F7FCF8" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "4px",
+          }}
+        >
+          <Database size={18} color="var(--sprout)" />
+          <h3 style={{ fontFamily: "var(--font-display)", fontSize: "18px" }}>
+            Search USDA foods
+          </h3>
+        </div>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "var(--ink-soft)",
+            marginBottom: "14px",
+          }}
+        >
+          Look up a food manually and fill the nutrition fields from FoodData
+          Central.
+        </p>
+
+        <form onSubmit={handleUsdaSearch} style={usdaSearchRowStyle}>
+          <input
+            type="search"
+            placeholder="Search banana, chicken breast..."
+            value={usdaQuery}
+            onChange={(e) => setUsdaQuery(e.target.value)}
+            style={inputStyle}
+          />
+          <button
+            type="submit"
+            disabled={isSearchingUsda || !usdaQuery.trim()}
+            style={usdaSearchBtnStyle}
+            aria-label="Search USDA foods"
+          >
+            <Search size={17} />
+          </button>
+        </form>
+
+        {usdaError && (
+          <p
+            style={{
+              color: "var(--danger)",
+              fontSize: "13px",
+              marginTop: "10px",
+            }}
+          >
+            {usdaError}
+          </p>
+        )}
+
+        {usdaResults.length > 0 && (
+          <div style={usdaResultsStyle}>
+            {usdaResults.map((food) => (
+              <button
+                type="button"
+                key={food.id}
+                onClick={() => fillFromFood(food)}
+                style={usdaResultBtnStyle}
+              >
+                <span style={shortcutNameStyle}>{food.name}</span>
+                <span style={shortcutMetaStyle}>
+                  {[
+                    food.brand,
+                    food.dataType,
+                    food.serving,
+                    `${food.calories || 0} kcal`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </button>
+            ))}
+          </div>
         )}
       </Card>
 
@@ -472,6 +615,126 @@ function FoodShortcutSection({
       </div>
     </div>
   );
+}
+
+async function searchUsdaFoodsDirect(query) {
+  const params = new URLSearchParams({ api_key: USDA_API_KEY });
+  const response = await fetch(`${USDA_SEARCH_URL}?${params.toString()}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query,
+      pageSize: 25,
+      dataType: ["Branded", "Survey (FNDDS)", "Foundation", "SR Legacy"],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("USDA search is temporarily unavailable.");
+  }
+
+  const data = await response.json();
+  return rankUsdaFoods(data.foods || [], query).slice(0, 8);
+}
+
+function normalizeUsdaFood(food) {
+  const name = food.description || food.lowercaseDescription || "USDA food";
+  const brand = food.brandOwner || food.brandName || "";
+
+  return {
+    id: food.fdcId || `${name}-${brand}`,
+    name,
+    brand,
+    dataType: food.dataType || "",
+    serving: servingLabel(food),
+    calories: Math.round(usdaNutrientValue(food, [1008, "208", "energy"])),
+    protein: Math.round(usdaNutrientValue(food, [1003, "203", "protein"])),
+    carbs: Math.round(
+      usdaNutrientValue(food, [1005, "205", "carbohydrate, by difference"]),
+    ),
+    fat: Math.round(usdaNutrientValue(food, [1004, "204", "total lipid"])),
+    fiber: Math.round(
+      usdaNutrientValue(food, [1079, "291", "fiber, total dietary"]),
+    ),
+    sugar: Math.round(usdaNutrientValue(food, [2000, "269", "sugars"])),
+    sodium: Math.round(usdaNutrientValue(food, [1093, "307", "sodium"])),
+  };
+}
+
+function rankUsdaFoods(foods, query) {
+  return foods
+    .map((food) => ({
+      food: normalizeUsdaFood(food),
+      score: usdaScore(food, query),
+    }))
+    .sort((a, b) => b.score - a.score || a.food.name.localeCompare(b.food.name))
+    .map(({ food }) => food);
+}
+
+function usdaScore(food, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  const name = normalizeSearchText(food.description || food.lowercaseDescription);
+  const brand = normalizeSearchText(food.brandOwner || food.brandName);
+  const combined = `${name} ${brand}`.trim();
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  let score = 0;
+
+  if (name === normalizedQuery) score += 90;
+  if (name.startsWith(normalizedQuery)) score += 60;
+  if (name.includes(normalizedQuery)) score += 40;
+  if (tokens.length > 0 && tokens.every((token) => combined.includes(token))) {
+    score += 35;
+  }
+  if (brand && tokens.some((token) => brand.includes(token))) score += 20;
+  if (food.dataType === "Branded") score += 18;
+  if (food.dataType === "Survey (FNDDS)") score += 8;
+  if (food.dataType === "Foundation") score += 3;
+
+  return score;
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function usdaNutrientValue(food, matchers) {
+  const nutrients = food.foodNutrients || [];
+  const found = nutrients.find((nutrient) => {
+    const unit = String(nutrient.unitName || nutrient.unit || "").toLowerCase();
+    if (matchers.includes("energy") && unit && unit !== "kcal") return false;
+
+    const keys = [
+      nutrient.nutrientId,
+      nutrient.nutrientNumber,
+      nutrient.number,
+      nutrient.nutrientName,
+      nutrient.name,
+    ].map((value) => String(value || "").toLowerCase());
+
+    return matchers.some((matcher) => {
+      const normalized = String(matcher).toLowerCase();
+      return keys.some((key) => key === normalized || key.includes(normalized));
+    });
+  });
+
+  const amount = found?.value ?? found?.amount ?? 0;
+  const unit = String(found?.unitName || found?.unit || "").toLowerCase();
+  if (unit === "g" && matchers.includes("sodium")) return amount * 1000;
+  return amount;
+}
+
+function servingLabel(food) {
+  if (food.householdServingFullText) return food.householdServingFullText;
+  if (food.servingSize && food.servingSizeUnit) {
+    return `${food.servingSize} ${food.servingSizeUnit}`;
+  }
+  return "100 g";
 }
 
 function MiniField({ label, value, onChange, placeholder }) {
@@ -653,5 +916,43 @@ const photoBtnStyle = {
   borderRadius: "var(--radius-md)",
   fontWeight: 600,
   fontSize: "14px",
+  cursor: "pointer",
+};
+
+const usdaSearchRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 44px",
+  gap: "8px",
+};
+
+const usdaSearchBtnStyle = {
+  width: "44px",
+  minHeight: "42px",
+  border: "none",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--sprout)",
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const usdaResultsStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  marginTop: "12px",
+};
+
+const usdaResultBtnStyle = {
+  display: "block",
+  width: "100%",
+  padding: "10px 12px",
+  textAlign: "left",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-md)",
+  color: "var(--ink)",
   cursor: "pointer",
 };

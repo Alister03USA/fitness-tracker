@@ -33,6 +33,7 @@ export default function Dashboard({
   caloriesBurned = 0,
   onUpdateSteps,
   onDeleteWorkout,
+  onDeleteMealLog,
   onOpenHistory,
 }) {
   // Exercise calories add back to the daily budget, matching how most
@@ -402,6 +403,13 @@ export default function Dashboard({
                   <span className="stat-number" style={{ fontSize: "14px" }}>
                     {log.calories} kcal
                   </span>
+                  <button
+                    onClick={() => onDeleteMealLog?.(log.id)}
+                    style={deleteBtnStyle}
+                    aria-label="Delete food entry"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </Card>
             ))}

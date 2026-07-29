@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { showToast } from "./lib/toast";
+import { confirmDialog } from "./lib/confirmDialog";
 import Auth from "./components/Auth";
 import ResetPasswordScreen from "./components/ResetPasswordScreen";
 import ToastHost from "./components/ui/ToastHost";
@@ -429,6 +430,33 @@ export default function App() {
     [fetchTodayWorkouts],
   );
 
+  const handleDeleteMealLog = useCallback(
+    async (logId) => {
+      if (!session?.user?.id) return;
+
+      const confirmed = await confirmDialog({
+        title: "Remove meal?",
+        message: "This food entry will be permanently removed from your log.",
+        confirmLabel: "Remove",
+        danger: true,
+      });
+      if (!confirmed) return;
+
+      const { error } = await supabase
+        .from("logs")
+        .delete()
+        .eq("id", logId)
+        .eq("user_id", session.user.id);
+
+      if (error) {
+        showToast("Failed to delete meal: " + error.message, "error");
+      } else {
+        fetchTodayLogs();
+      }
+    },
+    [session, fetchTodayLogs],
+  );
+
   const caloriesBurned = todayWorkouts.reduce(
     (sum, w) => sum + (w.calories_burned || 0),
     0,
@@ -634,6 +662,7 @@ export default function App() {
             caloriesBurned={caloriesBurned}
             onUpdateSteps={handleUpdateSteps}
             onDeleteWorkout={handleDeleteWorkout}
+            onDeleteMealLog={handleDeleteMealLog}
             onOpenHistory={() => setActiveTab("history")}
           />
         )}
@@ -641,6 +670,7 @@ export default function App() {
           <FoodHistory
             session={session}
             onBack={() => setActiveTab("dashboard")}
+            onLogsChanged={fetchTodayLogs}
           />
         )}
         {activeTab === "log" && (

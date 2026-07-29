@@ -32,7 +32,7 @@ const addDays = (date, days) => {
   return d;
 };
 
-export default function FoodHistory({ session, onBack }) {
+export default function FoodHistory({ session, onBack, onLogsChanged }) {
   const userId = session?.user?.id;
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
@@ -132,13 +132,18 @@ export default function FoodHistory({ session, onBack }) {
     });
     if (!confirmed) return;
 
-    const { error } = await supabase.from("logs").delete().eq("id", id);
+    const { error } = await supabase
+      .from("logs")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
     if (error) {
       showToast("Failed to delete: " + error.message, "error");
     } else {
       fetchDayLogs();
       fetchMonthSummary();
       fetchWeekLogs();
+      onLogsChanged?.();
     }
   };
 
